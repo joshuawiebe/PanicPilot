@@ -66,6 +66,10 @@ class Game:
         self._paused          = False
         self.speed_scale      = SPEED_SCALE_NORMAL
 
+        # ── Phase 9: Car Classes ───────────────────────────────────────────── 
+        self.car_class_host   = DEFAULT_CAR_CLASS
+        self.car_class_client = DEFAULT_CAR_CLASS
+
         self._warn_font      = pygame.font.SysFont("Arial", 18, bold=True)
         self._countdown_font = pygame.font.SysFont("Arial", 160, bold=True)
         self._win_font       = pygame.font.SysFont("Arial", 72, bold=True)
@@ -92,11 +96,18 @@ class Game:
         side_y      = math.sin(rad)
         side_offset = 36   # px seitlicher Versatz von Mittellinie
 
+        # ── Phase 9: Autos mit Car Classes ─────────────────────────────────────
+        # Host-Auto (rot) und Client-Auto (blau) mit unterschiedlichen Klassen
+        color_host   = CAR_CLASSES[self.car_class_host]["color"]
+        color_client = CAR_CLASSES[self.car_class_client]["color"]
+
         self.cars: list[Car] = [
             Car(sx - side_x * side_offset, sy - side_y * side_offset,
-                sa, initial_fuel=FUEL_MAX, body_color=CAR_COLOR_HOST),
+                sa, initial_fuel=FUEL_MAX, body_color=color_host,
+                car_class=self.car_class_host),
             Car(sx + side_x * side_offset, sy + side_y * side_offset,
-                sa, initial_fuel=FUEL_MAX, body_color=CAR_COLOR_CLIENT),
+                sa, initial_fuel=FUEL_MAX, body_color=color_client,
+                car_class=self.car_class_client),
         ]
         self.car = self.cars[0]
 
@@ -234,7 +245,9 @@ class Game:
             s0.x, s0.y, s0.speed, self.cars[0].get_radius())
 
         if abs(s0.speed) > 5.0:
-            s0.fuel -= FUEL_DRAIN_RATE * dt
+            # ── Phase 9: Class-specific fuel drain ────────────────────────────
+            fuel_drain = self.cars[0].get_fuel_drain()
+            s0.fuel -= fuel_drain * dt
             s0.fuel  = max(0.0, s0.fuel)
         if s0.fuel <= 0.0:
             self.game_over = True
@@ -249,7 +262,9 @@ class Game:
             s1.x, s1.y, s1.speed = self.walls.resolve_all(
                 s1.x, s1.y, s1.speed, self.cars[1].get_radius())
             if abs(s1.speed) > 5.0:
-                s1.fuel -= FUEL_DRAIN_RATE * dt
+                # ── Phase 9: Class-specific fuel drain ────────────────────────────
+                fuel_drain_1 = self.cars[1].get_fuel_drain()
+                s1.fuel -= fuel_drain_1 * dt
                 s1.fuel  = max(0.0, s1.fuel)
             self._resolve_car_collision()
 

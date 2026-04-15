@@ -46,3 +46,47 @@ FUEL_CANISTER_VALUE =  38.0
 NUM_CANISTERS       =   3
 
 MAX_PARTICLES = 120
+
+# ── Auto-Klassen (Phase 9) ────────────────────────────────────────────────────
+# Jede Klasse hat unterschiedliche Physik-Parameter und Visualisierung
+CAR_CLASSES = {
+    "balanced": {
+        "display_name": "Balanced",
+        "description": "Standard Handling & Geschwindigkeit",
+        "color": (210, 45, 45),      # Rot (Host-Standard)
+        "sprite_width": 1.0,          # Normal
+        "max_speed": 500.0,
+        "accel": 300.0,
+        "friction": 130.0,
+        "fuel_drain": 7.6,
+        "grass_grip": 1.0,            # Normal grip auf Gras
+        "ice_grip": 1.0,              # Normal grip auf Eis
+    },
+    "speedster": {
+        "display_name": "Speedster",
+        "description": "Schnell aber rutschig",
+        "color": (255, 200, 0),       # Gelb
+        "sprite_width": 0.80,         # Schmal-Mittel
+        "max_speed": 620.0,           # +24% (bessere Balance)
+        "accel": 380.0,               # +27% (kontrollierbar)
+        "friction": 95.0,             # -27% (rutschig aber managebar)
+        "fuel_drain": 10.0,           # +32% (höherer Verbrauch)
+        "grass_grip": 0.65,           # Rutschig auf Gras
+        "ice_grip": 0.50,             # Rutschig auf Eis
+    },
+    "tank": {
+        "display_name": "Tank",
+        "description": "Langsam aber stabil",
+        "color": (160, 120, 50),      # Gold-Braun (bessere Sichtbarkeit)
+        "sprite_width": 1.30,         # Breiter
+        "max_speed": 390.0,           # -22% (weniger Handicap)
+        "accel": 260.0,               # -13% (besser spielbar)
+        "friction": 160.0,            # +23% (gutes Grip)
+        "fuel_drain": 5.5,            # -28% (effizienter)
+        "grass_grip": 0.85,           # Gutes Grip auf Gras
+        "ice_grip": 1.10,             # Gutes Grip auf Eis
+    },
+}
+
+# Standard-Klasse beim Start
+DEFAULT_CAR_CLASS = "balanced"

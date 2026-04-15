@@ -61,6 +61,10 @@ class ClientGame:
         self._client_inventory: str | None = None   # Inventar aus Host-Paket
         self.camera    = Camera()
 
+        # ── Phase 9: Car Classes ───────────────────────────────────────────── 
+        self.car_class_host   = DEFAULT_CAR_CLASS
+        self.car_class_client = DEFAULT_CAR_CLASS
+
         self._flash_surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
         self._fog_surf   = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
 
@@ -112,10 +116,16 @@ class ClientGame:
         side_y      = math.sin(rad)
         side_offset = 36
 
+        # ── Phase 9: Car Classes verwenden ─────────────────────────────────────
+        color_host   = CAR_CLASSES[self.car_class_host]["color"]
+        color_client = CAR_CLASSES[self.car_class_client]["color"]
+
         self.car   = Car(sx - side_x * side_offset, sy - side_y * side_offset,
-                         sa, initial_fuel=FUEL_MAX, body_color=CAR_COLOR_HOST)
+                         sa, initial_fuel=FUEL_MAX, body_color=color_host,
+                         car_class=self.car_class_host)
         self.car_b = Car(sx + side_x * side_offset, sy + side_y * side_offset,
-                         sa, initial_fuel=FUEL_MAX, body_color=CAR_COLOR_CLIENT)
+                         sa, initial_fuel=FUEL_MAX, body_color=color_client,
+                         car_class=self.car_class_client)
 
         self.canisters = [
             FuelCanister(x, y, canister_id=i)
@@ -304,6 +314,21 @@ class ClientGame:
 
     # ── State übernehmen ─────────────────────────────────────────────────────
 
+    def _reset_mode_entities(self) -> None:
+        """
+        Phase 9: Wird aufgerufen wenn sich der Modus während des Spiels ändert.
+        Setzt PvP-Mode auf allen Entitäten zurück und cleared collected_by.
+        """
+        pvp = (self._mode == 3)
+        for obj in (*self.canisters, *self.boosts, *self.oils, *self.item_boxes):
+            obj.set_pvp_mode(pvp)
+            obj.collected_by.clear()
+        self.boomerangs.clear()
+        if self.car:
+            self.car.inventory = None
+        if self.car_b:
+            self.car_b.inventory = None
+
     def _apply_state(self, packet: dict) -> None:
         if self.car is None:
             return
@@ -327,10 +352,37 @@ class ClientGame:
         if hf > self._fuel_flash:
             self._fuel_flash = hf
 
+        # ── Phase 9: Mode-Wechsel betitelt Entitäts-Reset ────────────────────
         new_mode = int(packet.get("mode", self._mode))
         if new_mode != self._mode:
             self._mode = new_mode
+            self._reset_mode_entities()
             self._update_caption()
+
+        # ── Phase 9: Car Classes empfangen ─────────────────────────────────────
+        new_car0_class = packet.get("car0_class", self.car_class_host)
+        new_car1_class = packet.get("car1_class", self.car_class_client)
+        
+        # Wenn sich Klasse ändert, Farbe/Sprite aktualisieren
+        if new_car0_class != self.car_class_host and self.car:
+            self.car_class_host = new_car0_class
+            old_state = self.car.state
+            color_host = CAR_CLASSES[self.car_class_host]["color"]
+            # Auto mit neuer Klasse und Sprite neu erzeugen
+            self.car = Car(old_state.x, old_state.y, old_state.angle,
+                          initial_fuel=old_state.fuel, body_color=color_host,
+                          car_class=self.car_class_host)
+            # Zustand kopieren (Inventar, etc)
+            self.car.state = old_state
+
+        if new_car1_class != self.car_class_client and self.car_b and self._mode == 3:
+            self.car_class_client = new_car1_class
+            old_state_b = self.car_b.state
+            color_client = CAR_CLASSES[self.car_class_client]["color"]
+            self.car_b = Car(old_state_b.x, old_state_b.y, old_state_b.angle,
+                            initial_fuel=old_state_b.fuel, body_color=color_client,
+                            car_class=self.car_class_client)
+            self.car_b.state = old_state_b
 
         # Auto B (Modus 3)
         if "car1" in packet and self.car_b:

@@ -15,20 +15,41 @@ _BOOST_MAX_SPEED   = 780.0
 
 # ─── Sprite-Aufbau ────────────────────────────────────────────────────────────
 
-def _build_car_surface(body_color: tuple = (210, 45, 45)) -> pygame.Surface:
-    """Top-Down-Kart-Sprite, 24×36 px, SRCALPHA. body_color für zweites Auto."""
-    W, H = 24, 36
+def _build_car_surface(body_color: tuple = (210, 45, 45), sprite_width: float = 1.0) -> pygame.Surface:
+    """
+    Top-Down-Kart-Sprite, 28×42 px, SRCALPHA (größer für bessere Sichtbarkeit).
+    body_color: Karosserie-Farbe
+    sprite_width: Skalierungsfaktor für die Breite (1.0=normal, 0.80=Speedster schmal, 1.30=Tank breit)
+    """
+    W, H = 28, 42
+    # Adjust width based on class (height stays same for speed visualization)
+    W_adjusted = int(W * sprite_width)
+    W_offset = (W - W_adjusted) // 2
+    
     surf = pygame.Surface((W, H), pygame.SRCALPHA)
-    pygame.draw.rect(surf, body_color, (3, 5, W - 6, H - 10), border_radius=5)
-    pygame.draw.rect(surf, LIGHT_BLUE, (5, 7, W - 10, 9), border_radius=2)
-    pygame.draw.line(surf, WHITE, (6, 8), (W - 7, 8), 1)
-    pygame.draw.rect(surf, (90, 150, 190), (5, H - 15, W - 10, 6), border_radius=2)
-    for wx, wy in [(0, 6), (W - 5, 6), (0, H - 15), (W - 5, H - 15)]:
-        pygame.draw.rect(surf, (22, 22, 22), (wx, wy, 5, 9), border_radius=2)
-        pygame.draw.rect(surf, (80, 80, 80), (wx + 1, wy + 1, 3, 7), border_radius=1)
-    # Cockpit-Linie in der Körperfarbe (leicht dunkler)
-    dark = tuple(max(0, c - 60) for c in body_color)
-    pygame.draw.rect(surf, dark, (W // 2 - 1, 17, 2, H - 23))
+    # Body adjusts width based on class - nicer rounded corners
+    pygame.draw.rect(surf, body_color, 
+                     (W_offset + 3, 6, W_adjusted - 6, H - 12), border_radius=7)
+    # Cockpit (windshield) - bigger
+    cockpit_w = max(4, int((W_adjusted - 8) * 0.65))
+    cockpit_x = W // 2 - cockpit_w // 2
+    pygame.draw.rect(surf, LIGHT_BLUE, (cockpit_x, 8, cockpit_w, 11), border_radius=3)
+    pygame.draw.line(surf, WHITE, (cockpit_x + 1, 9), (cockpit_x + cockpit_w - 2, 9), 2)
+    # Spoiler (rear) - bigger
+    pygame.draw.rect(surf, (100, 160, 200), (W_offset + 4, H - 18, W_adjusted - 8, 7), border_radius=2)
+    # Wheels (adjusted for width) - bigger
+    wheel_w = max(4, int(6 * sprite_width))
+    wheel_h = 11
+    for wx_offset in [W_offset + 2, W - W_offset - wheel_w - 2]:
+        for wy in [7, H - 18]:
+            pygame.draw.rect(surf, (20, 20, 20), (wx_offset, wy, wheel_w, wheel_h), border_radius=2)
+            pygame.draw.rect(surf, (90, 90, 90), (wx_offset + 1, wy + 1, wheel_w - 2, wheel_h - 2), border_radius=1)
+    # Cockpit-Linie in der Körperfarbe (leicht dunkler) - für Charakteristik
+    dark = tuple(max(0, c - 70) for c in body_color)
+    pygame.draw.rect(surf, dark, (W // 2 - 1, 20, 2, H - 28))
+    # Top stripe für visuellen Unterschied nach Klasse
+    stripe_color = tuple(min(255, c + 80) for c in body_color)
+    pygame.draw.rect(surf, stripe_color, (W_offset + 4, 6, W_adjusted - 8, 3), border_radius=1)
     return surf
 
 # Auto-Farben für Host (Rot) und Client (Blau)
@@ -39,23 +60,56 @@ CAR_COLOR_CLIENT = ( 30, 100, 210)
 class Car:
     """
     Koppelt CarState (Daten) mit Physik-Logik und Rendering.
-    body_color steuert die Karosserie-Farbe (Standard: Rot = Host).
+    Phase 9: Unterstützt verschiedene Auto-Klassen mit unterschiedlichen Physik-Parametern.
     """
 
     SPEED_DISPLAY_SCALE = 0.47
-    SPRITE_W = 24
-    SPRITE_H = 36
+    SPRITE_W = 28
+    SPRITE_H = 42
 
     def __init__(self, x: float, y: float, angle: float,
                  initial_fuel: float = FUEL_MAX,
-                 body_color: tuple = CAR_COLOR_HOST) -> None:
+                 body_color: tuple = CAR_COLOR_HOST,
+                 car_class: str = DEFAULT_CAR_CLASS) -> None:
         self.state      = CarState(x=x, y=y, angle=angle, speed=0.0, fuel=initial_fuel)
-        self._base_surf = _build_car_surface(body_color)
+        self.car_class  = car_class
+        self._class_stats = CAR_CLASSES.get(car_class, CAR_CLASSES[DEFAULT_CAR_CLASS])
+        
+        # Sprite mit class-spezifischer Breite erzeugen
+        sprite_width = self._class_stats.get("sprite_width", 1.0)
+        self._base_surf = _build_car_surface(body_color, sprite_width=sprite_width)
+        
         # Phase 6.2 – Effekt-Timer
         self.boost_timer: float = 0.0
         self.spin_timer:  float = 0.0
         # Phase 7 – Item-Inventar (max. 1 Item)
         self.inventory: str | None = None
+
+    # ── Class-spezifische Physik ──────────────────────────────────────────────
+    
+    def get_max_speed(self) -> float:
+        """Maximale Vorwärtsgeschwindigkeit basierend auf Klasse."""
+        return self._class_stats.get("max_speed", CAR_MAX_SPEED)
+    
+    def get_accel(self) -> float:
+        """Beschleunigungswert basierend auf Klasse."""
+        return self._class_stats.get("accel", CAR_ACCEL)
+    
+    def get_friction(self) -> float:
+        """Reibungswert basierend auf Klasse."""
+        return self._class_stats.get("friction", CAR_FRICTION)
+    
+    def get_fuel_drain(self) -> float:
+        """Benzinverbrauch-Rate basierend auf Klasse."""
+        return self._class_stats.get("fuel_drain", FUEL_DRAIN_RATE)
+    
+    def get_grass_grip(self) -> float:
+        """Grip-Multiplikator auf Gras basierend auf Klasse."""
+        return self._class_stats.get("grass_grip", 1.0)
+    
+    def get_ice_grip(self) -> float:
+        """Grip-Multiplikator auf Eis/Öl basierend auf Klasse."""
+        return self._class_stats.get("ice_grip", 1.0)
 
     # ── Properties ────────────────────────────────────────────────────────────
     @property
@@ -84,7 +138,9 @@ class Car:
         can_accel = s.fuel > 0
         if can_accel:
             boost_bonus = _BOOST_ACCEL if self.boost_timer > 0 else 0.0
-            if inp.throttle: s.speed += (CAR_ACCEL + boost_bonus) * dt * eff_grip
+            # Use class-specific acceleration
+            class_accel = self.get_accel()
+            if inp.throttle: s.speed += (class_accel + boost_bonus) * dt * eff_grip
             if inp.brake:    s.speed -= CAR_BRAKE_DECEL * dt
         speed_abs = abs(s.speed)
         if speed_abs > 5.0:
@@ -106,21 +162,30 @@ class Car:
         if self.spin_timer  > 0: self.spin_timer  = max(0.0, self.spin_timer  - dt)
 
         eff_grip = _OIL_SPIN_GRIP if self.spin_timer > 0 else grip_factor
-        friction = CAR_FRICTION * eff_grip
+        
+        # Class-specific friction
+        class_friction = self.get_friction()
+        friction = class_friction * eff_grip
         if s.speed > 0: s.speed = max(0.0, s.speed - friction * dt)
         elif s.speed < 0: s.speed = min(0.0, s.speed + friction * dt)
 
+        # Class-specific max speeds with terrain modifiers
+        class_max_speed = self.get_max_speed()
+        
         if surface == "grass":
-            fwd_cap = CAR_MAX_SPEED   * GRASS_SPEED_FACTOR
-            rev_cap = CAR_MAX_REVERSE * GRASS_SPEED_FACTOR
+            grass_grip = self.get_grass_grip()
+            fwd_cap = class_max_speed   * GRASS_SPEED_FACTOR * grass_grip
+            rev_cap = CAR_MAX_REVERSE   * GRASS_SPEED_FACTOR * grass_grip
         elif surface == "curb":
-            fwd_cap = CAR_MAX_SPEED   * CURB_SPEED_FACTOR
-            rev_cap = CAR_MAX_REVERSE * CURB_SPEED_FACTOR
+            fwd_cap = class_max_speed   * CURB_SPEED_FACTOR
+            rev_cap = CAR_MAX_REVERSE   * CURB_SPEED_FACTOR
         else:
-            # Ice-Tuning: floor at 0.78 so it's still fast but controllable
-            capped = max(0.78 if eff_grip < 1.0 else 0.2, eff_grip)
-            fwd_cap = CAR_MAX_SPEED   * capped
-            rev_cap = CAR_MAX_REVERSE * capped
+            # Ice: use class-specific ice grip
+            ice_grip = self.get_ice_grip()
+            # floor at 0.78 so it's still fast but controllable (modified with ice_grip)
+            capped = max(0.78 * ice_grip, ice_grip * 0.2)
+            fwd_cap = class_max_speed   * capped
+            rev_cap = CAR_MAX_REVERSE   * capped
 
         if self.boost_timer > 0:
             fwd_cap = max(fwd_cap, _BOOST_MAX_SPEED)

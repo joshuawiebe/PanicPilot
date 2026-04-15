@@ -36,11 +36,14 @@ def get_own_ip() -> str:
 class HostGame(Game):
     """
     Erweitert Game um Netzwerk-Logik.
+    Phase 9: Unterstützt Car Classes für beide Spieler.
     Modus 3: empfängt Input des Clients als Auto-B-Input, simuliert beide Autos.
     """
 
     def __init__(self, mode: int = 1, track_length: int = 20,
-                 speed_scale: float = SPEED_SCALE_NORMAL) -> None:
+                 speed_scale: float = SPEED_SCALE_NORMAL,
+                 car_class_host: str = DEFAULT_CAR_CLASS,
+                 car_class_client: str = DEFAULT_CAR_CLASS) -> None:
         self._host_mode         = mode
         self._host_track_length = track_length
         self._host_speed_scale  = speed_scale
@@ -49,6 +52,12 @@ class HostGame(Game):
         super().__init__()
         self.mode        = mode
         self.speed_scale = speed_scale   # ← Phase 5.3: Spieltempo für beide Spieler
+        
+        # ── Phase 9: Car Classes ───────────────────────────────────────────── 
+        self.car_class_host   = car_class_host
+        self.car_class_client = car_class_client
+        # Autos neu erzeugen mit den spezifizierten Klassen
+        self._init_game_objects()
 
         self._net                = HostConnection(NET_PORT)
         self._net.start()
@@ -181,6 +190,9 @@ class HostGame(Game):
             # Inventar-Sync: Client zeigt eigenes Item korrekt an
             "car0_inv":   self.cars[0].inventory or "",
             "car1_inv":   (self.cars[1].inventory or "") if self.mode == 3 else "",
+            # ── Phase 9: Car Class Info ────────────────────────────────────────
+            "car0_class": self.car_class_host,
+            "car1_class": self.car_class_client if self.mode == 3 else "",
         }
         # Auto B (Modus 3)
         if self.mode == 3:

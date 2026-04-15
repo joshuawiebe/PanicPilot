@@ -19,14 +19,18 @@ from settings import *
 
 
 # Lazy imports – nur laden wenn tatsächlich gebraucht
-def _start_host(mode: int, length: int, speed_scale: float = 1.0) -> tuple[bool, bool]:
+def _start_host(mode: int, length: int, speed_scale: float = 1.0,
+                 car_class_host: str = DEFAULT_CAR_CLASS,
+                 car_class_client: str = DEFAULT_CAR_CLASS) -> tuple[bool, bool]:
     """
     Startet das Spiel als Host.
+    Phase 10: Akzeptiert car_class_host und car_class_client.
     Gibt (return_to_menu, return_to_settings) zurück.
     """
     from host import HostGame
 
-    game = HostGame(mode=mode, track_length=length, speed_scale=speed_scale)
+    game = HostGame(mode=mode, track_length=length, speed_scale=speed_scale,
+                   car_class_host=car_class_host, car_class_client=car_class_client)
     game.run()
     return (
         getattr(game, "_return_to_menu", False),
@@ -34,8 +38,13 @@ def _start_host(mode: int, length: int, speed_scale: float = 1.0) -> tuple[bool,
     )
 
 
-def _start_solo(length: int, speed_scale: float = 1.0) -> bool:
-    """Startet lokales Solo-Spiel (kein Netzwerk). Gibt return_to_menu zurück."""
+def _start_solo(length: int, speed_scale: float = 1.0,
+                 car_class: str = DEFAULT_CAR_CLASS) -> bool:
+    """
+    Startet lokales Solo-Spiel (kein Netzwerk). 
+    Phase 10: Akzeptiert car_class.
+    Gibt return_to_menu zurück.
+    """
     from game import Game, SPEED_SCALE_NORMAL
     from track import Track
 
@@ -53,6 +62,9 @@ def _start_solo(length: int, speed_scale: float = 1.0) -> bool:
     game._return_to_menu = False
     game._paused = False
     game.speed_scale = speed_scale
+    # ── Phase 9: Car Classes ──────────────────────────────────────────────
+    game.car_class_host = car_class
+    game.car_class_client = DEFAULT_CAR_CLASS
     game._warn_font = pygame.font.SysFont("Arial", 18, bold=True)
     game._countdown_font = pygame.font.SysFont("Arial", 160, bold=True)
     game._win_font = pygame.font.SysFont("Arial", 72, bold=True)
@@ -216,6 +228,158 @@ class TextInput:
                     self.text += ch
 
 
+# ── Car Selection UI ──────────────────────────────────────────────────────────
+
+class CarSelectionMenu:
+    """
+    Car Selection Screen – zeigt 3 Klassen mit Icons, Stats und Navigation.
+    Phase 10: Erste Komponente des Pro Lobby Systems.
+    """
+
+    def __init__(self, screen: pygame.Surface) -> None:
+        self.screen = screen
+        self._title_font = pygame.font.SysFont("Arial", 40, bold=True)
+        self._class_font = pygame.font.SysFont("Arial", 28, bold=True)
+        self._stat_font = pygame.font.SysFont("Arial", 16)
+        self._info_font = pygame.font.SysFont("Arial", 14)
+        
+        self.selected_idx = 0  # 0=balanced, 1=speedster, 2=tank
+        self.class_list = ["balanced", "speedster", "tank"]
+        
+        # Buttons
+        cx = SCREEN_W // 2
+        self._btn_prev = Button(cx - 250, SCREEN_H // 2 + 80, "< Zurück")
+        self._btn_next = Button(cx + 250, SCREEN_H // 2 + 80, "Weiter >")
+        self._btn_select = Button(cx, SCREEN_H // 2 + 160, "WÄHLEN")
+        self._btn_cancel = Button(cx, SCREEN_H // 2 + 230, "Abbrechen")
+
+    def run(self, title: str = "AUTO WÄHLEN") -> str | None:
+        """
+        Blockierendes Menü. Gibt gewählte Klasse zurück ("balanced", "speedster", "tank") oder None (abgebrochen).
+        """
+        clock = pygame.time.Clock()
+        while True:
+            mouse = pygame.mouse.get_pos()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return None
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    return None
+                
+                if self._btn_prev.is_clicked(event):
+                    self.selected_idx = (self.selected_idx - 1) % len(self.class_list)
+                elif self._btn_next.is_clicked(event):
+                    self.selected_idx = (self.selected_idx + 1) % len(self.class_list)
+                elif self._btn_select.is_clicked(event):
+                    return self.class_list[self.selected_idx]
+                elif self._btn_cancel.is_clicked(event):
+                    return None
+                
+                # Keyboard-Shortcuts
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_LEFT:
+                        self.selected_idx = (self.selected_idx - 1) % len(self.class_list)
+                    elif event.key == pygame.K_RIGHT:
+                        self.selected_idx = (self.selected_idx + 1) % len(self.class_list)
+                    elif event.key == pygame.K_RETURN:
+                        return self.class_list[self.selected_idx]
+
+            self._draw(title, mouse)
+            pygame.display.flip()
+            clock.tick(60)
+
+    def _draw(self, title: str, mouse_pos: tuple) -> None:
+        self.screen.fill(MENU_BG)
+        self._draw_bg()
+        
+        # Titel
+        t = self._title_font.render(title, True, YELLOW)
+        self.screen.blit(t, ((SCREEN_W - t.get_width()) // 2, 80))
+        
+        # Drei Klassen nebeneinander anzeigen
+        cx = SCREEN_W // 2
+        class_x_positions = [cx - 320, cx, cx + 320]
+        class_colors = [
+            CAR_CLASSES["balanced"]["color"],
+            CAR_CLASSES["speedster"]["color"],
+            CAR_CLASSES["tank"]["color"],
+        ]
+        
+        for i, class_name in enumerate(self.class_list):
+            x = class_x_positions[i]
+            is_selected = i == self.selected_idx
+            self._draw_class_card(x, SCREEN_H // 2 + 20, class_name, class_colors[i], is_selected)
+        
+        # Buttons
+        self._btn_prev.draw(self.screen, mouse_pos)
+        self._btn_next.draw(self.screen, mouse_pos)
+        self._btn_select.draw(self.screen, mouse_pos)
+        self._btn_cancel.draw(self.screen, mouse_pos)
+
+    def _draw_class_card(self, x: int, y: int, class_name: str, color: tuple, selected: bool) -> None:
+        """Zeichnet eine Auto-Klassen-Karte mit Icon und Stats."""
+        stats = CAR_CLASSES[class_name]
+        
+        # Card-Hintergrund
+        card_rect = pygame.Rect(x - 120, y - 100, 240, 200)
+        border_color = YELLOW if selected else (100, 100, 100)
+        border_width = 4 if selected else 2
+        
+        # Card mit Gradient-ähnlichem Effekt
+        pygame.draw.rect(self.screen, (15, 25, 50), card_rect, border_radius=12)
+        pygame.draw.rect(self.screen, border_color, card_rect, border_width, border_radius=12)
+        
+        # Glow-Effect wenn selected
+        if selected:
+            glow_rect = card_rect.inflate(8, 8)
+            pygame.draw.rect(self.screen, (255, 220, 0, 40), glow_rect, 2, border_radius=14)
+        
+        # Klassen-Name
+        name_lbl = self._class_font.render(stats["display_name"], True, color)
+        self.screen.blit(name_lbl, (x - name_lbl.get_width() // 2, y - 80))
+        
+        # Beschreibung
+        desc_lbl = self._info_font.render(stats["description"], True, C_LABEL)
+        self.screen.blit(desc_lbl, (x - desc_lbl.get_width() // 2, y - 50))
+        
+        # Stats mit Balken-Visualisierung
+        speed = stats["max_speed"]
+        accel = stats["accel"]
+        fuel_drain = stats["fuel_drain"]
+        
+        # Speed Bar (0-700 normalize)
+        speed_pct = min(100, int((speed / 700.0) * 100))
+        stat_y = y - 20
+        bar_width = 180
+        pygame.draw.rect(self.screen, (40, 40, 40), (x - bar_width // 2, stat_y, bar_width, 12), border_radius=3)
+        pygame.draw.rect(self.screen, (100, 200, 255), (x - bar_width // 2, stat_y, int(bar_width * speed_pct / 100), 12), border_radius=3)
+        speed_lbl = self._info_font.render(f"Speed: {int(speed)}", True, WHITE)
+        self.screen.blit(speed_lbl, (x - speed_lbl.get_width() // 2, stat_y - 16))
+        
+        # Acceleration Bar
+        accel_pct = min(100, int((accel / 450.0) * 100))
+        stat_y = y + 8
+        pygame.draw.rect(self.screen, (40, 40, 40), (x - bar_width // 2, stat_y, bar_width, 12), border_radius=3)
+        pygame.draw.rect(self.screen, (255, 165, 0), (x - bar_width // 2, stat_y, int(bar_width * accel_pct / 100), 12), border_radius=3)
+        accel_lbl = self._info_font.render(f"Accel: {int(accel)}", True, WHITE)
+        self.screen.blit(accel_lbl, (x - accel_lbl.get_width() // 2, stat_y - 16))
+        
+        # Efficiency (inverse of fuel_drain)
+        eff_pct = 100 - min(100, int((fuel_drain / 12.0) * 100))
+        stat_y = y + 36
+        pygame.draw.rect(self.screen, (40, 40, 40), (x - bar_width // 2, stat_y, bar_width, 12), border_radius=3)
+        pygame.draw.rect(self.screen, (100, 255, 100), (x - bar_width // 2, stat_y, int(bar_width * eff_pct / 100), 12), border_radius=3)
+        eff_lbl = self._info_font.render(f"Efficiency: {eff_pct}%", True, WHITE)
+        self.screen.blit(eff_lbl, (x - eff_lbl.get_width() // 2, stat_y - 16))
+
+    def _draw_bg(self) -> None:
+        """Dekorative Linien."""
+        for i in range(0, SCREEN_W, 120):
+            pygame.draw.line(self.screen, (20, 35, 55), (i, 0), (i, SCREEN_H))
+        for i in range(0, SCREEN_H, 120):
+            pygame.draw.line(self.screen, (20, 35, 55), (0, i), (SCREEN_W, i))
+
+
 # ── Menü-Klassen ──────────────────────────────────────────────────────────────
 
 
@@ -352,7 +516,7 @@ class HostSetupMenu:
             self.screen.blit(t, ((SCREEN_W - t.get_width()) // 2, 80))
             # IP
             ip_hint = self._ip_label.render("Deine IP (für den Client):", True, C_LABEL)
-            ip_val = self._ip_font.render(f"  {self._own_ip}:54321  ", True, CYAN)
+            ip_val = self._ip_font.render(f"  {self._own_ip}:8081  ", True, CYAN)
             box = ip_val.get_rect(center=(SCREEN_W // 2, 148))
             pygame.draw.rect(
                 self.screen, (15, 30, 60), box.inflate(20, 10), border_radius=6
@@ -388,7 +552,8 @@ class HostSetupMenu:
 
 
 class SoloSetupMenu:
-    """Setup-Screen für den Solo-Modus: Streckenlänge + Geschwindigkeit."""
+    """Setup-Screen für den Solo-Modus: Streckenlänge + Geschwindigkeit + Auto.
+    Phase 10: Mit Car-Selection UI."""
 
     SPEED_OPTIONS = [("🐢  Langsam", 0.70), ("🏎  Normal", 1.00), ("⚡  Schnell", 1.40)]
 
@@ -401,15 +566,18 @@ class SoloSetupMenu:
             cx, SCREEN_H // 2 - 60, "Streckenlänge (Tiles)", 10, 50, 15
         )
         self._speed_idx = 1
+        self._car_class = DEFAULT_CAR_CLASS  # ← Phase 10
         y0 = SCREEN_H // 2 + 40
         self._btn_speed = Button(cx, y0, "Tempo", w=280, h=50)
-        self._btn_start = Button(cx, y0 + 70, "  SOLO STARTEN  ")
-        self._btn_back = Button(cx, y0 + 140, "  Zurück  ", w=180, h=44)
+        self._btn_car = Button(cx, y0 + 70, "Auto: Balanced", w=280, h=50)  # ← Phase 10
+        self._btn_start = Button(cx, y0 + 140, "  SOLO STARTEN  ")
+        self._btn_back = Button(cx, y0 + 210, "  Zurück  ", w=180, h=44)
 
-    def run(self) -> tuple[int, float] | None:
-        """Gibt (length, speed_scale) oder None zurück."""
+    def run(self) -> tuple[int, float, str] | None:
+        """Gibt (length, speed_scale, car_class) oder None zurück."""
         clock = pygame.time.Clock()
         spd_colors = [ORANGE, GREEN, RED]
+        car_select = CarSelectionMenu(self.screen)  # ← Phase 10
         while True:
             mouse = pygame.mouse.get_pos()
             for event in pygame.event.get():
@@ -420,9 +588,14 @@ class SoloSetupMenu:
                 self._slider.handle_event(event)
                 if self._btn_speed.is_clicked(event):
                     self._speed_idx = (self._speed_idx + 1) % len(self.SPEED_OPTIONS)
+                # ── Phase 10: Auto-Button ────────────────────────────────────────
+                if self._btn_car.is_clicked(event):
+                    result = car_select.run("WÄHLE DEIN AUTO")
+                    if result:
+                        self._car_class = result
                 if self._btn_start.is_clicked(event):
                     _, scale = self.SPEED_OPTIONS[self._speed_idx]
-                    return self._slider.value, scale
+                    return self._slider.value, scale, self._car_class  # ← Phase 10
                 if self._btn_back.is_clicked(event):
                     return None
 
@@ -443,6 +616,10 @@ class SoloSetupMenu:
             self._btn_speed.label = f"Tempo: {spd_label}"
             self._btn_speed.draw(self.screen, mouse)
             self._btn_speed.label = orig
+            # ── Phase 10: Auto-Button-Label ──────────────────────────────────────
+            car_stats = CAR_CLASSES[self._car_class]
+            self._btn_car.label = f"Auto: {car_stats['display_name']}"
+            self._btn_car.draw(self.screen, mouse)
             self._btn_start.draw(self.screen, mouse)
             self._btn_back.draw(self.screen, mouse)
             pygame.display.flip()
@@ -504,6 +681,167 @@ class ClientSetupMenu:
             clock.tick(60)
 
 
+# ── Phase 10: Lobby System ─────────────────────────────────────────────────────
+
+class HostLobby:
+    """
+    Host-Side Lobby: Wartet auf Client, zeigt beide Auto-Auswahlen.
+    Phase 10: Pro Lobby System.
+    """
+
+    def __init__(self, screen: pygame.Surface, mode: int, track_length: int, speed_scale: float) -> None:
+        self.screen = screen
+        self.mode = mode
+        self.track_length = track_length
+        self.speed_scale = speed_scale
+        
+        self._title_font = pygame.font.SysFont("Arial", 40, bold=True)
+        self._status_font = pygame.font.SysFont("Arial", 20)
+        self._info_font = pygame.font.SysFont("Arial", 16)
+        
+        self.host_car_class = DEFAULT_CAR_CLASS
+        self.client_car_class = DEFAULT_CAR_CLASS
+        self.host_ready = False
+        self.client_connected = False
+        self.client_ready = False
+        
+        # Buttons
+        cx = SCREEN_W // 2
+        self._btn_host_car = Button(cx - 240, SCREEN_H // 2 + 40, "HOST AUTO")
+        self._btn_client_car = Button(cx + 240, SCREEN_H // 2 + 40, "CLIENT AUTO")
+        self._btn_ready = Button(cx, SCREEN_H // 2 + 140, "✓ BEREIT", w=280, h=60)
+        self._btn_cancel = Button(cx, SCREEN_H // 2 + 220, "Abbrechen")
+        
+        self._countdown = 0.0
+        self._start_game = False
+
+    def run(self) -> tuple[str, str] | None:
+        """
+        Host-Lobby. Gibt (host_car_class, client_car_class) zurück wenn bereit, oder None (abgebrochen).
+        Wird blockierend bis beide Spieler ready sind.
+        """
+        # Placeholder: In echter Version würde hier Network-Connection gemanagt
+        self.client_connected = True  # Vereinfacht für MVP
+        
+        car_select = CarSelectionMenu(self.screen)
+        
+        clock = pygame.time.Clock()
+        while True:
+            mouse = pygame.mouse.get_pos()
+            dt = clock.tick(60) / 1000.0
+            
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return None
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    return None
+                
+                if self._btn_host_car.is_clicked(event):
+                    result = car_select.run("WÄHLE DEIN AUTO (HOST)")
+                    if result:
+                        self.host_car_class = result
+                elif self._btn_client_car.is_clicked(event):
+                    result = car_select.run("WÄHLE AUTO FÜR CLIENT")
+                    if result:
+                        self.client_car_class = result
+                elif self._btn_ready.is_clicked(event):
+                    self.host_ready = not self.host_ready
+                    if self.host_ready:
+                        self._countdown = 5.0
+                elif self._btn_cancel.is_clicked(event):
+                    return None
+                
+                # Keyboard
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN:
+                        if self.host_ready and self.client_ready:
+                            return (self.host_car_class, self.client_car_class)
+
+            # Simulation: Im echten System würde hier Network-Sync stattfinden
+            if self.host_ready:
+                # Client sollte bereit sein (Simulation)
+                self.client_ready = True
+                self._countdown -= dt
+                if self._countdown <= 0:
+                    return (self.host_car_class, self.client_car_class)
+            
+            self._draw(mouse)
+            pygame.display.flip()
+
+        return None
+
+    def _draw(self, mouse_pos: tuple) -> None:
+        self.screen.fill(MENU_BG)
+        self._draw_bg()
+        
+        # Titel
+        t = self._title_font.render("LOBBY - WARTET AUF CLIENTS", True, YELLOW)
+        self.screen.blit(t, ((SCREEN_W - t.get_width()) // 2, 60))
+        
+        # Host Auto (Linke Seite)
+        self._draw_player_info(
+            200, SCREEN_H // 2,
+            "HOST (Du)", self.host_car_class,
+            self.host_ready, True
+        )
+        
+        # Client Auto (Rechte Seite)
+        if self.client_connected:
+            client_ready_text = "✓ BEREIT" if self.client_ready else "Wählt Auto..."
+            self._draw_player_info(
+                SCREEN_W - 200, SCREEN_H // 2,
+                "CLIENT", self.client_car_class,
+                self.client_ready, False
+            )
+        else:
+            nc_lbl = self._status_font.render("⏳ CLIENT VERBINDUNGSSTEHT AUS...", True, ORANGE)
+            self.screen.blit(nc_lbl, ((SCREEN_W - nc_lbl.get_width()) // 2, SCREEN_H // 2 + 10))
+        
+        # Buttons
+        self._btn_host_car.draw(self.screen, mouse_pos)
+        self._btn_client_car.draw(self.screen, mouse_pos)
+        
+        ready_label = "✓ BEREIT!" if self.host_ready else "BEREIT?"
+        self._btn_ready.label = ready_label
+        self._btn_ready.draw(self.screen, mouse_pos)
+        self._btn_cancel.draw(self.screen, mouse_pos)
+        
+        # Status
+        if self.host_ready and self.client_ready:
+            status = self._status_font.render(f"STARTING IN {max(0, int(self._countdown))}...", True, GREEN)
+            self.screen.blit(status, ((SCREEN_W - status.get_width()) // 2, SCREEN_H - 100))
+
+    def _draw_player_info(self, x: int, y: int, player_name: str, car_class: str, is_ready: bool, is_host: bool) -> None:
+        """Zeichnet Spieler-Info Box."""
+        # Box
+        box_rect = pygame.Rect(x - 90, y - 80, 180, 160)
+        pygame.draw.rect(self.screen, (20, 30, 60), box_rect, border_radius=10)
+        border_color = GREEN if is_ready else CYAN
+        pygame.draw.rect(self.screen, border_color, box_rect, 3, border_radius=10)
+        
+        # Name
+        name_lbl = self._status_font.render(player_name, True, C_TEXT)
+        self.screen.blit(name_lbl, (x - name_lbl.get_width() // 2, y - 70))
+        
+        # Auto-Info
+        stats = CAR_CLASSES[car_class]
+        class_lbl = self._info_font.render(stats["display_name"], True, stats["color"])
+        self.screen.blit(class_lbl, (x - class_lbl.get_width() // 2, y - 35))
+        
+        # Ready Status
+        ready_text = "✓ READY" if is_ready else "AUSWAHL"
+        ready_color = GREEN if is_ready else ORANGE
+        ready_lbl = self._info_font.render(ready_text, True, ready_color)
+        self.screen.blit(ready_lbl, (x - ready_lbl.get_width() // 2, y + 20))
+
+    def _draw_bg(self) -> None:
+        """Dekorative Linien."""
+        for i in range(0, SCREEN_W, 120):
+            pygame.draw.line(self.screen, (20, 35, 55), (i, 0), (i, SCREEN_H))
+        for i in range(0, SCREEN_H, 120):
+            pygame.draw.line(self.screen, (20, 35, 55), (0, i), (SCREEN_W, i))
+
+
 # ── Einstiegspunkt ────────────────────────────────────────────────────────────
 
 
@@ -522,6 +860,15 @@ def main() -> None:
             result = setup.run()
             if result is not None:
                 mode, length, speed_scale = result
+                
+                # ── Phase 10: HostLobby für Auto-Auswahl ──────────────────────────
+                lobby = HostLobby(screen, mode, length, speed_scale)
+                lobby_result = lobby.run()
+                if lobby_result is None:
+                    continue  # Abgebrochen → Hauptmenü
+                
+                host_car, client_car = lobby_result
+                
                 last_settings = {
                     "mode": mode,
                     "length": length,
@@ -530,7 +877,11 @@ def main() -> None:
                 while True:  # Neustart-Schleife
                     pygame.quit()
                     pygame.init()
-                    to_menu, to_settings = _start_host(mode, length, speed_scale)
+                    to_menu, to_settings = _start_host(
+                        mode, length, speed_scale,
+                        car_class_host=host_car,
+                        car_class_client=client_car
+                    )
                     pygame.init()
                     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
                     if to_settings:
@@ -545,15 +896,22 @@ def main() -> None:
                             "length": length,
                             "speed_idx": setup2._speed_idx,
                         }
+                        # Neuer Lobby-Screen nach Settings-Change
+                        lobby = HostLobby(screen, mode, length, speed_scale)
+                        lobby_result = lobby.run()
+                        if lobby_result is None:
+                            break
+                        host_car, client_car = lobby_result
                         continue  # Neu starten mit geänderten Settings
                     break  # M oder ESC → Hauptmenü
         elif choice == "solo":
             result = SoloSetupMenu(screen).run()
             if result is not None:
-                length, speed_scale = result
+                # ── Phase 10: Car-Class extrahieren ─────────────────────────────
+                length, speed_scale, car_class = result
                 pygame.quit()
                 pygame.init()
-                _start_solo(length, speed_scale)
+                _start_solo(length, speed_scale, car_class)
                 pygame.init()
                 screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
         elif choice == "client":
