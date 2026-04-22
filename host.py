@@ -21,7 +21,7 @@ from net         import HostConnection
 
 logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
 
-NET_PORT = 8081
+NET_PORT = 54321
 
 
 def get_own_ip() -> str:
@@ -36,34 +36,37 @@ def get_own_ip() -> str:
 class HostGame(Game):
     """
     Erweitert Game um Netzwerk-Logik.
-    Phase 9: Unterstützt Car Classes für beide Spieler.
     Modus 3: empfängt Input des Clients als Auto-B-Input, simuliert beide Autos.
     """
 
     def __init__(self, mode: int = 1, track_length: int = 20,
                  speed_scale: float = SPEED_SCALE_NORMAL,
-                 car_class_host: str = DEFAULT_CAR_CLASS,
-                 car_class_client: str = DEFAULT_CAR_CLASS) -> None:
+                 net: "HostConnection | None" = None,
+                 car_class_host: str = "balanced",
+                 car_class_client: str = "balanced") -> None:
         self._host_mode         = mode
         self._host_track_length = track_length
         self._host_speed_scale  = speed_scale
         self._generated_track   = Track.generate(length=track_length)
 
-        super().__init__()
-        self.mode        = mode
-        self.speed_scale = speed_scale   # ← Phase 5.3: Spieltempo für beide Spieler
-        
-        # ── Phase 9: Car Classes ───────────────────────────────────────────── 
-        self.car_class_host   = car_class_host
-        self.car_class_client = car_class_client
-        # Autos neu erzeugen mit den spezifizierten Klassen
-        self._init_game_objects()
+        # Netz: entweder extern (Lobby) oder neu erstellen
+        if net is not None:
+            self._net      = net
+            self._owns_net = False
+        else:
+            self._net      = HostConnection(NET_PORT)
+            self._net.start()
+            self._owns_net = True
 
-        self._net                = HostConnection(NET_PORT)
-        self._net.start()
+        # Klassen sind durch die Lobby-Auswahl gelockt
+        super().__init__(locked_class0=car_class_host,
+                         locked_class1=car_class_client)
+        self.mode        = mode
+        self.speed_scale = speed_scale
+
         self._last_client_inp    = InputState()
         self._pending_map_send   = False
-        self._return_to_settings = False   # S auf End-Screen → Einstellungen
+        self._return_to_settings = False
 
         self._status_font = pygame.font.SysFont("Arial", 15, bold=True)
         self._mode_font   = pygame.font.SysFont("Arial", 22, bold=True)
@@ -103,19 +106,31 @@ class HostGame(Game):
             else:
                 self.mode = (self.mode % 3) + 1
                 self.reset_for_mode(self.mode)
+                self._pending_map_send = True
                 self._update_caption()
         elif event.key == pygame.K_s and (self.game_over or self.winner):
-            # S auf End-Screen → zurück zu Einstellungen
             self.running               = False
             self._return_to_settings   = True
 
     # ─── Update ──────────────────────────────────────────────────────────────
 
     def update(self, dt: float, input_override=None, input_car1=None) -> None:
+        # Phase 11: Client will zurück zur Lobby?
+        if self._net.client_wants_lobby():
+            self._return_to_lobby  = True
+            self._lobby_initiator  = "remote"
+            self.running           = False
+            return
+
+        # Phase 11.1: request_lobby_state während des Spiels ignorieren
+        # (wird in HostLobby behandelt; hier nur leeren damit Flag nicht hängt)
+        self._net.client_requests_state()
+
         # Map-Handshake: einmalig nach neuem Client oder Reset
         if self._net.got_new_client() or self._pending_map_send:
             if self._net.is_connected():
-                self._net.send_map(self.track.to_dict())
+                map_data = {**self.track.to_dict(), "game_mode": self.mode}
+                self._net.send_map(map_data)
             self._pending_map_send = False
 
         # Countdown einfrieren bis Client verbunden
@@ -144,7 +159,7 @@ class HostGame(Game):
                 steer_left  = client_inp.steer_left,
                 steer_right = client_inp.steer_right,
                 ping_pos    = None,
-                use_item    = client_inp.use_item,   # Phase 7/8 fix
+                use_item    = client_inp.use_item,
             )
 
         # Input je Modus
@@ -187,12 +202,11 @@ class HostGame(Game):
             "oils":       [o.to_net_dict()  for o in self.oils],
             "item_boxes": [ib.to_net_dict() for ib in self.item_boxes],
             "boomerangs": [b.to_net_dict()  for b  in self.boomerangs],
+            "car0_class": self.cars[0].car_class,
+            "car1_class": self.cars[1].car_class,
             # Inventar-Sync: Client zeigt eigenes Item korrekt an
             "car0_inv":   self.cars[0].inventory or "",
             "car1_inv":   (self.cars[1].inventory or "") if self.mode == 3 else "",
-            # ── Phase 9: Car Class Info ────────────────────────────────────────
-            "car0_class": self.car_class_host,
-            "car1_class": self.car_class_client if self.mode == 3 else "",
         }
         # Auto B (Modus 3)
         if self.mode == 3:
@@ -252,7 +266,15 @@ class HostGame(Game):
         try:
             super().run()
         finally:
-            self._net.shutdown()
+            # Phase 11: Nur senden wenn Host selbst die Lobby initiiert hat
+            if (getattr(self, "_return_to_lobby", False)
+                    and getattr(self, "_lobby_initiator", "") != "remote"):
+                self._net.send_back_to_lobby()
+            # Phase 11.2: Flags nullen damit nächster Start sauber ist
+            if self._net.is_connected():
+                self._net.reset_lobby_flags()
+            if self._owns_net:
+                self._net.shutdown()
 
 
 if __name__ == "__main__":

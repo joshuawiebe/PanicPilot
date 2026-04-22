@@ -13,36 +13,52 @@ import math
 from typing import Optional
 import pygame
 
-from settings    import *
-from camera      import Camera, ZOOM_MIN, ZOOM_MAX
-from car         import Car, CAR_COLOR_HOST, CAR_COLOR_CLIENT
-from car_state   import CarState
+from settings import *
+from camera import Camera, ZOOM_MIN, ZOOM_MAX
+from car import Car, CAR_COLOR_HOST, CAR_COLOR_CLIENT
+from car_state import CarState
 from input_state import InputState
-from track       import Track
-from walls       import WallSystem
-from hud         import HUD
-from entities    import (FuelCanister, BoostPad, OilSlick, ItemBox,
-                          GreenBoomerang, RedBoomerang,
-                          EntityParticleSystem, PLAYER_HOST, PLAYER_CLIENT,
-                          BOOMERANG_SPEED)
-from particles   import ParticleSystem
-from props       import PropManager
+from track import Track
+from walls import WallSystem
+from hud import HUD
+from entities import (
+    FuelCanister,
+    BoostPad,
+    OilSlick,
+    ItemBox,
+    GreenBoomerang,
+    RedBoomerang,
+    EntityParticleSystem,
+    PLAYER_HOST,
+    PLAYER_CLIENT,
+    BOOMERANG_SPEED,
+)
+from particles import ParticleSystem
+from props import PropManager
 
-FOG_ALPHA  = 255
+# Phase 12: Audio (lazy import – läuft auch ohne sound_manager.py)
+try:
+    import sound_manager as _sound_mod
+
+    _SM = _sound_mod.get()
+except Exception:
+    _SM = None
+
+FOG_ALPHA = 255
 FOG_RADIUS = int(min(SCREEN_W, SCREEN_H) * 0.085)
 
 PING_DURATION = 2.5
-MAX_PINGS     = 8
+MAX_PINGS = 8
 PING_BLINK_HZ = 3.0
 
-COUNTDOWN_STEPS         = [3, 2, 1]
+COUNTDOWN_STEPS = [3, 2, 1]
 COUNTDOWN_STEP_DURATION = 1.0
-GO_DISPLAY_DURATION     = 1.2
+GO_DISPLAY_DURATION = 1.2
 
 # Geschwindigkeits-Skalierung: skaliert dt bei apply_input()
-SPEED_SCALE_SLOW   = 0.70
+SPEED_SCALE_SLOW = 0.70
 SPEED_SCALE_NORMAL = 1.00
-SPEED_SCALE_FAST   = 1.40
+SPEED_SCALE_FAST = 1.40
 
 
 class Game:
@@ -53,31 +69,45 @@ class Game:
     self.speed_scale: float   – Geschwindigkeits-Skalierung
     """
 
-    def __init__(self) -> None:
-        pygame.init()
-        self.screen  = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+    def __init__(
+        self,
+        screen: "pygame.Surface | None" = None,
+        locked_class0: str = "balanced",
+        locked_class1: str = "balanced",
+    ) -> None:
+
+        if screen is None:
+            pygame.init()
+            self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+        else:
+            self.screen = screen
         pygame.display.set_caption(TITLE)
-        self.clock   = pygame.time.Clock()
+        self.clock = pygame.time.Clock()
         self.running = True
 
-        self.mode             = 1
-        self.pings: list[list]= []
-        self._return_to_menu  = False
-        self._paused          = False
-        self.speed_scale      = SPEED_SCALE_NORMAL
+        self.mode = 1
+        self.pings: list[list] = []
+        self._return_to_menu = False
+        # Phase 12: Countdown-Schritt-Tracking für Sound
+        self._last_cdstep = -1
+        self._return_to_lobby = False  # Phase 11: Lobby-Return
+        self._lobby_initiator = ""  # "self" | "remote"
+        self._paused = False
+        self.speed_scale = SPEED_SCALE_NORMAL
+        self._pause_btn_rects: dict = {}  # populated by draw_pause_overlay
 
-        # ── Phase 9: Car Classes ───────────────────────────────────────────── 
-        self.car_class_host   = DEFAULT_CAR_CLASS
-        self.car_class_client = DEFAULT_CAR_CLASS
+        # Klassen sind vor dem Rennen gelockt – kein In-Game-Wechsel
+        self._locked_class0 = locked_class0
+        self._locked_class1 = locked_class1
 
-        self._warn_font      = pygame.font.SysFont("Arial", 18, bold=True)
+        self._warn_font = pygame.font.SysFont("Arial", 18, bold=True)
         self._countdown_font = pygame.font.SysFont("Arial", 160, bold=True)
-        self._win_font       = pygame.font.SysFont("Arial", 72, bold=True)
-        self._sub_font       = pygame.font.SysFont("Arial", 28, bold=True)
-        self._pause_font     = pygame.font.SysFont("Arial", 80, bold=True)
+        self._win_font = pygame.font.SysFont("Arial", 72, bold=True)
+        self._sub_font = pygame.font.SysFont("Arial", 28, bold=True)
+        self._pause_font = pygame.font.SysFont("Arial", 80, bold=True)
 
         self._flash_surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-        self._fog_surf   = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        self._fog_surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
 
         self.camera = Camera()
         self._init_game_objects()
@@ -92,31 +122,44 @@ class Game:
 
         # PvP: Autos nebeneinander statt hintereinander
         # Senkrecht-Vektor zur Fahrtrichtung
-        side_x      = math.cos(rad)
-        side_y      = math.sin(rad)
-        side_offset = 36   # px seitlicher Versatz von Mittellinie
+        side_x = math.cos(rad)
+        side_y = math.sin(rad)
+        side_offset = 36
 
-        # ── Phase 9: Autos mit Car Classes ─────────────────────────────────────
-        # Host-Auto (rot) und Client-Auto (blau) mit unterschiedlichen Klassen
-        color_host   = CAR_CLASSES[self.car_class_host]["color"]
-        color_client = CAR_CLASSES[self.car_class_client]["color"]
+        # Klassen aus den gesperrten Werten (Lobby-Auswahl)
+        prev_class0 = getattr(self, "_locked_class0", "balanced")
+        prev_class1 = getattr(self, "_locked_class1", "balanced")
+
+        cs0 = CAR_CLASSES.get(prev_class0, CAR_CLASSES["balanced"])
+        cs1 = CAR_CLASSES.get(prev_class1, CAR_CLASSES["balanced"])
 
         self.cars: list[Car] = [
-            Car(sx - side_x * side_offset, sy - side_y * side_offset,
-                sa, initial_fuel=FUEL_MAX, body_color=color_host,
-                car_class=self.car_class_host),
-            Car(sx + side_x * side_offset, sy + side_y * side_offset,
-                sa, initial_fuel=FUEL_MAX, body_color=color_client,
-                car_class=self.car_class_client),
+            Car(
+                sx - side_x * side_offset,
+                sy - side_y * side_offset,
+                sa,
+                initial_fuel=FUEL_MAX,
+                body_color=cs0["color_host"],
+                car_class=prev_class0,
+            ),
+            Car(
+                sx + side_x * side_offset,
+                sy + side_y * side_offset,
+                sa,
+                initial_fuel=FUEL_MAX,
+                body_color=cs1["color_client"],
+                car_class=prev_class1,
+            ),
         ]
         self.car = self.cars[0]
 
         self.camera.snap(sx, sy)
-        self.hud       = HUD()
+        self.hud = HUD()
         self.particles = ParticleSystem()
-        self.walls     = WallSystem(screen_edge=False)
+        self.walls = WallSystem(screen_edge=False)
 
         from walls import RectWall
+
         for wx, wy, ww, wh in self.track.build_boundary_walls():
             self.walls.add(RectWall(wx, wy, ww, wh, visible=False))
         for wx, wy, ww, wh in self.track.build_anticheat_walls():
@@ -125,11 +168,12 @@ class Game:
         # Dekorative Props (Phase 5.3)
         prop_seed = hash(tuple(t.tile_type for t in self.track.tiles)) % 99999
         self.props = PropManager.generate(
-            self.track, theme=self.track.theme, seed=prop_seed)
+            self.track, theme=self.track.theme, seed=prop_seed
+        )
 
         # Kanister mit IDs (für Netzwerk-Sync)
         # Im Modus 3 (PvP) pvp_mode aktivieren damit collected_by korrekt arbeitet
-        pvp = (self.mode == 3)
+        pvp = self.mode == 3
         self.canisters: list[FuelCanister] = []
         for i, (cx, cy) in enumerate(self.track.canister_positions()):
             c = FuelCanister(cx, cy, canister_id=i)
@@ -155,16 +199,16 @@ class Game:
             self.item_boxes.append(ib)
 
         self.entity_particles = EntityParticleSystem()
-        self.boomerangs: list = []   # GreenBoomerang | RedBoomerang
+        self.boomerangs: list = []  # GreenBoomerang | RedBoomerang
 
-        self.elapsed_time     = 0.0
-        self.game_over        = False
+        self.elapsed_time = 0.0
+        self.game_over = False
         self.winner: Optional[str] = None
-        self._fuel_flash      = 0.0
+        self._fuel_flash = 0.0
         self._off_track_accum = 0.0
-        self._countdown       = float(len(COUNTDOWN_STEPS)) * COUNTDOWN_STEP_DURATION
-        self._go_timer        = 0.0
-        self._race_started    = False
+        self._countdown = float(len(COUNTDOWN_STEPS)) * COUNTDOWN_STEP_DURATION
+        self._go_timer = 0.0
+        self._race_started = False
 
     def reset(self, track: Optional[Track] = None) -> None:
         self.pings.clear()
@@ -177,44 +221,102 @@ class Game:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                self._handle_pause_click(event.pos)
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    self.running = False
+                if event.key in (pygame.K_ESCAPE, pygame.K_p):
+                    if self.game_over or self.winner:
+                        # End-screen: ESC = Menü
+                        if event.key == pygame.K_ESCAPE:
+                            self.running = False
+                    else:
+                        # Toggle enhanced pause
+                        self._paused = not self._paused
+                        if _SM:
+                            _SM.play_pause()
+                            if self._paused:
+                                _SM.engine_stop()
+                            else:
+                                _SM.engine_start()
                 elif event.key == pygame.K_r:
                     if not self._paused:
                         self.reset()
                     return
-                elif event.key == pygame.K_p:
-                    # Pause nur während laufendem Rennen
-                    if not (self.game_over or self.winner):
-                        self._paused = not self._paused
                 elif event.key == pygame.K_m and (self.game_over or self.winner):
                     self.running = False
                     self._return_to_menu = True
+                # Pause-Menü Shortcuts
+                elif self._paused:
+                    if event.key == pygame.K_l:
+                        self._do_return_to_lobby()
+                    elif event.key == pygame.K_q:
+                        self.running = False
                 else:
                     self._on_keydown(event)
+
+    def _handle_pause_click(self, pos: tuple) -> None:
+        """Verarbeitet Mausklicks auf die Pause-Menü-Buttons."""
+        if not self._paused:
+            return
+        action = None
+        for key, rect in self._pause_btn_rects.items():
+            if rect.collidepoint(pos):
+                action = key
+                break
+        if action == "resume":
+            self._paused = False
+        elif action == "lobby":
+            self._do_return_to_lobby()
+        elif action == "quit":
+            self.running = False
+
+    def _do_return_to_lobby(self) -> None:
+        """Setzt Lobby-Return-Flag und beendet das Rennen (Phase 11)."""
+        self._return_to_lobby = True
+        self._lobby_initiator = "self"
+        self._paused = False
+        self.running = False
 
     def _on_keydown(self, event) -> None:
         pass
 
     # ─── Update ──────────────────────────────────────────────────────────────
 
-    def update(self, dt: float, input_override: Optional[InputState] = None,
-               input_car1: Optional[InputState] = None) -> None:
+    def update(
+        self,
+        dt: float,
+        input_override: Optional[InputState] = None,
+        input_car1: Optional[InputState] = None,
+    ) -> None:
         # Pause-Guard: bei Pause komplett einfrieren
         if self._paused:
             return
 
         self.pings = [p for p in self.pings if p[2] > 0]
-        for p in self.pings: p[2] -= dt
+        for p in self.pings:
+            p[2] -= dt
+
+        # Sicherstellen, dass die Variable existiert, egal was in __init__ passiert
+        if not hasattr(self, "_last_cdstep"):
+            self._last_cdstep = -1
 
         # Countdown
         if self._countdown > 0:
             self._countdown -= dt
+            # ── Phase 12: Countdown-Beep bei jedem Schritt ───────────────────
+            cdstep = int(self._countdown)
+            if cdstep != self._last_cdstep:
+                self._last_cdstep = cdstep
+                if _SM and self._countdown > 0:
+                    _SM.play_countdown_beep()
             if self._countdown <= 0:
-                self._countdown    = 0.0
-                self._go_timer     = GO_DISPLAY_DURATION
+                self._countdown = 0.0
+                self._go_timer = GO_DISPLAY_DURATION
                 self._race_started = True
+                # ── GO-Sound + Motor starten ──────────────────────────────────
+                if _SM:
+                    _SM.play_countdown_go()
+                    _SM.engine_start()
             self.camera.update(self.cars[0].state.x, self.cars[0].state.y, dt)
             return
 
@@ -234,50 +336,71 @@ class Game:
         scaled_dt = dt * self.speed_scale
 
         # ── Auto 0 ────────────────────────────────────────────────────────────
-        s0   = self.cars[0].state
-        inp0 = (input_override if input_override is not None
-                else InputState.from_keys(pygame.key.get_pressed()))
-        surf0  = self.track.surface_at(s0.x, s0.y)
-        grip0  = self._get_grip(surf0)
+        s0 = self.cars[0].state
+        inp0 = (
+            input_override
+            if input_override is not None
+            else InputState.from_keys(pygame.key.get_pressed())
+        )
+        surf0 = self.track.surface_at(s0.x, s0.y)
+        grip0 = self._get_grip(surf0, self.cars[0])
         self.cars[0].apply_input(inp0, scaled_dt, grip_factor=grip0)
         self.cars[0].update(dt, surface=surf0, grip_factor=grip0)
+        _pre_speed0 = s0.speed
         s0.x, s0.y, s0.speed = self.walls.resolve_all(
-            s0.x, s0.y, s0.speed, self.cars[0].get_radius())
+            s0.x, s0.y, s0.speed, self.cars[0].get_radius()
+        )
+        # ── Phase 12: Wand-Kollision erkennen ────────────────────────────────
+        if _SM and abs(_pre_speed0 - s0.speed) > 40:
+            _SM.play_collision(min(1.0, abs(_pre_speed0) / 400.0))
 
         if abs(s0.speed) > 5.0:
-            # ── Phase 9: Class-specific fuel drain ────────────────────────────
-            fuel_drain = self.cars[0].get_fuel_drain()
-            s0.fuel -= fuel_drain * dt
-            s0.fuel  = max(0.0, s0.fuel)
+            drain0 = (
+                FUEL_DRAIN_RATE
+                * CAR_CLASSES.get(self.cars[0].car_class, CAR_CLASSES["balanced"])[
+                    "fuel_mul"
+                ]
+            )
+            s0.fuel -= drain0 * dt
+            s0.fuel = max(0.0, s0.fuel)
         if s0.fuel <= 0.0:
             self.game_over = True
 
         # ── Auto 1 (Modus 3) ─────────────────────────────────────────────────
         if self.mode == 3 and input_car1 is not None:
-            s1    = self.cars[1].state
+            s1 = self.cars[1].state
             surf1 = self.track.surface_at(s1.x, s1.y)
-            grip1 = self._get_grip(surf1)
+            grip1 = self._get_grip(surf1, self.cars[1])
             self.cars[1].apply_input(input_car1, scaled_dt, grip_factor=grip1)
             self.cars[1].update(dt, surface=surf1, grip_factor=grip1)
             s1.x, s1.y, s1.speed = self.walls.resolve_all(
-                s1.x, s1.y, s1.speed, self.cars[1].get_radius())
+                s1.x, s1.y, s1.speed, self.cars[1].get_radius()
+            )
             if abs(s1.speed) > 5.0:
-                # ── Phase 9: Class-specific fuel drain ────────────────────────────
-                fuel_drain_1 = self.cars[1].get_fuel_drain()
-                s1.fuel -= fuel_drain_1 * dt
-                s1.fuel  = max(0.0, s1.fuel)
+                drain1 = (
+                    FUEL_DRAIN_RATE
+                    * CAR_CLASSES.get(self.cars[1].car_class, CAR_CLASSES["balanced"])[
+                        "fuel_mul"
+                    ]
+                )
+                s1.fuel -= drain1 * dt
+                s1.fuel = max(0.0, s1.fuel)
             self._resolve_car_collision()
 
         # ── Pickups: Kanister / Boost-Pads / Ölflecken / ItemBoxen ─────────
-        for c in self.canisters: c.update(dt)
-        for b in self.boosts:    b.update(dt)
-        for o in self.oils:      o.update(dt)
-        for ib in self.item_boxes: ib.update(dt)
-        self._apply_pickups(self.cars[0], PLAYER_HOST,   surf0, inp0.use_item)
+        for c in self.canisters:
+            c.update(dt)
+        for b in self.boosts:
+            b.update(dt)
+        for o in self.oils:
+            o.update(dt)
+        for ib in self.item_boxes:
+            ib.update(dt)
+        self._apply_pickups(self.cars[0], PLAYER_HOST, surf0, inp0.use_item)
         if self.mode == 3:
-            s1        = self.cars[1].state
+            s1 = self.cars[1].state
             surf1_now = self.track.surface_at(s1.x, s1.y)
-            use1      = input_car1.use_item if input_car1 is not None else False
+            use1 = input_car1.use_item if input_car1 is not None else False
             self._apply_pickups(self.cars[1], PLAYER_CLIENT, surf1_now, use1)
         if self._fuel_flash > 0:
             self._fuel_flash -= dt
@@ -285,8 +408,11 @@ class Game:
 
         # ── Boomerangs ────────────────────────────────────────────────────────
         # Target-Positionen für RedBoomerang
-        pos = [(c.state.x, c.state.y) for c in self.cars
-               if self.mode == 3 or c is self.cars[0]]
+        pos = [
+            (c.state.x, c.state.y)
+            for c in self.cars
+            if self.mode == 3 or c is self.cars[0]
+        ]
         for brang in self.boomerangs:
             if not brang.active:
                 continue
@@ -308,8 +434,7 @@ class Game:
                 pid = PLAYER_HOST if i == 0 else PLAYER_CLIENT
                 if brang.check_hit(car.state.x, car.state.y, pid):
                     car.spin_timer = OilSlick.SPIN_DURATION
-                    self.entity_particles.emit_boost_sparks(
-                        car.state.x, car.state.y)
+                    self.entity_particles.emit_boost_sparks(car.state.x, car.state.y)
         # Inaktive Boomerangs entfernen (nicht öfter als nötig)
         if any(not b.active for b in self.boomerangs):
             self.boomerangs = [b for b in self.boomerangs if b.active]
@@ -317,24 +442,33 @@ class Game:
         # ── Win Condition: Kein Sprit ─────────────────────────────────────────
         if self.winner is None:
             if s0.fuel <= 0.0:
-                self.winner    = "client" if self.mode == 3 else None
+                self.winner = "client" if self.mode == 3 else None
                 self.game_over = True
+                if _SM:
+                    _SM.engine_stop()
             elif self.mode == 3:
                 s1 = self.cars[1].state
                 if s1.fuel <= 0.0:
-                    self.winner    = "host"
+                    self.winner = "host"
                     self.game_over = True
+                    if _SM:
+                        _SM.engine_stop()
 
         # ── Win Condition: Ziellinie ──────────────────────────────────────────
         if self.winner is None and not self.game_over:
             if self.track.crosses_finish(s0.x, s0.y, self.cars[0].get_radius()):
-                self.winner    = "host"
+                self.winner = "host"
                 self.game_over = True
+                if _SM:
+                    _SM.engine_stop()
+                    _SM.play_win_fanfare()
             elif self.mode == 3:
                 s1 = self.cars[1].state
                 if self.track.crosses_finish(s1.x, s1.y, self.cars[1].get_radius()):
-                    self.winner    = "client"
+                    self.winner = "client"
                     self.game_over = True
+                    if _SM:
+                        _SM.engine_stop()
 
         # ── Kamera ───────────────────────────────────────────────────────────
         if self.mode == 3:
@@ -345,8 +479,8 @@ class Game:
         # ── Partikel ─────────────────────────────────────────────────────────
         rad = math.radians(s0.angle)
         self.particles.emit_exhaust(
-            s0.x - math.sin(rad) * 18, s0.y + math.cos(rad) * 18,
-            s0.angle, s0.speed)
+            s0.x - math.sin(rad) * 18, s0.y + math.cos(rad) * 18, s0.angle, s0.speed
+        )
         if surf0 in ("grass", "curb") and abs(s0.speed) > 15:
             self._off_track_accum += dt
             if self._off_track_accum > 0.05:
@@ -358,29 +492,50 @@ class Game:
         self.particles.update(dt)
         self.elapsed_time += dt
 
+        # ── Phase 12: Motor-Sound live aktualisieren ──────────────────────────
+        if _SM:
+            from settings import CAR_MAX_SPEED
+
+            _SM.update_engine(s0.speed, CAR_MAX_SPEED, dt)
+
         if self.mode == 1:
             self.camera.zoom = 1.0
 
     # ─── Physik-Helfer ───────────────────────────────────────────────────────
 
-    def _get_grip(self, surface: str) -> float:
+    def _get_grip(self, surface: str, car: "Car" = None) -> float:
+        """Grip per surface + theme + car class (Phase 9)."""
         theme = getattr(self.track, "theme", None)
+        grip_mod = (
+            CAR_CLASSES.get(
+                getattr(car, "car_class", "balanced"), CAR_CLASSES["balanced"]
+            )["grip_mod"]
+            if car
+            else 1.0
+        )
         if theme is None:
-            return 1.0
+            return 1.0 * grip_mod
         name = getattr(theme, "name", "")
         if surface == "asphalt":
             raw = float(getattr(theme, "road_grip", 1.0))
-            return max(0.78 if name == "ice" else 0.2, raw)
+            base = max(0.78 if name == "ice" else 0.2, raw)
         elif surface == "grass":
-            return max(0.1, 1.0 - float(getattr(theme, "grass_slip", 0.0)))
+            base = max(0.1, 1.0 - float(getattr(theme, "grass_slip", 0.0)))
         elif surface == "curb":
-            grip = float(getattr(theme, "road_grip", 1.0))
-            slip = float(getattr(theme, "grass_slip", 0.0))
-            return max(0.15, (grip + (1.0 - slip)) * 0.5)
-        return 1.0
+            g = float(getattr(theme, "road_grip", 1.0))
+            s = float(getattr(theme, "grass_slip", 0.0))
+            base = max(0.15, (g + (1.0 - s)) * 0.5)
+        else:
+            base = 1.0
+        return base * grip_mod
 
-    def _apply_pickups(self, car: "Car", player_id: int,
-                       surface: str = "asphalt", use_item: bool = False) -> None:
+    def _apply_pickups(
+        self,
+        car: "Car",
+        player_id: int,
+        surface: str = "asphalt",
+        use_item: bool = False,
+    ) -> None:
         """Kanister, Boost-Pads, Ölflecken, ItemBoxen und Item-Aktivierung."""
         s = car.state
         # Kanister
@@ -390,6 +545,8 @@ class Game:
                 self.particles.emit_pickup(c.x, c.y)
                 if player_id == PLAYER_HOST:
                     self._fuel_flash = 0.5
+                    if _SM:
+                        _SM.play_pickup_fuel()
         # Boost-Pads
         for b in self.boosts:
             if b.try_trigger(s.x, s.y, player_id=player_id):
@@ -407,22 +564,27 @@ class Game:
             if item and car.inventory is None:
                 car.inventory = item
                 self.entity_particles.emit_boost_sparks(ib.x, ib.y)
+                if player_id == PLAYER_HOST and _SM:
+                    _SM.play_pickup_item()
         # Item benutzen (SPACE / use_item Flag)
         if use_item and car.inventory is not None:
             self._use_item(car, player_id)
         # Oberflächen-Staub
         theme_name = getattr(getattr(self.track, "theme", None), "name", "standard")
-        emit_dust  = (surface == "grass" or theme_name in ("ice", "desert"))
+        emit_dust = surface == "grass" or theme_name in ("ice", "desert")
         if emit_dust and abs(s.speed) > 25:
-            dust_type = ("ice"    if theme_name == "ice"
-                         else "desert" if theme_name == "desert" else "grass")
+            dust_type = (
+                "ice"
+                if theme_name == "ice"
+                else "desert" if theme_name == "desert" else "grass"
+            )
             self.entity_particles.emit_dust(s.x, s.y, s.angle, s.speed, dust_type)
 
     def _use_item(self, car: "Car", player_id: int) -> None:
         """Item aus dem Inventar aktivieren – alle Items zentral hier."""
-        s    = car.state
+        s = car.state
         item = car.inventory
-        rad  = math.radians(s.angle)
+        rad = math.radians(s.angle)
         sin_a, cos_a = math.sin(rad), math.cos(rad)
 
         if item == "pocket_boost":
@@ -447,18 +609,33 @@ class Game:
             bx = s.x + sin_a * 40
             by = s.y - cos_a * 40
             self.boomerangs.append(
-                GreenBoomerang(bx, by, s.angle, player_id, brang_id=bid))
+                GreenBoomerang(bx, by, s.angle, player_id, brang_id=bid)
+            )
             self.entity_particles.emit_boost_sparks(bx, by)
+            if _SM:
+                _SM.play_boomerang()
 
         elif item == "red_boomerang":
             bid = len(self.boomerangs)
             bx = s.x + sin_a * 40
             by = s.y - cos_a * 40
             self.boomerangs.append(
-                RedBoomerang(bx, by, s.angle, player_id, brang_id=bid))
+                RedBoomerang(bx, by, s.angle, player_id, brang_id=bid)
+            )
             self.entity_particles.emit_boost_sparks(bx, by)
+            if _SM:
+                _SM.play_boomerang()
 
         car.inventory = None
+
+    def _cycle_car_class(self, car: "Car", player_id: int) -> None:
+        """Wechselt die Fahrzeugklasse (balanced → speedster → tank → …)."""
+        idx = CLASS_ORDER.index(car.car_class) if car.car_class in CLASS_ORDER else 0
+        new = CLASS_ORDER[(idx + 1) % len(CLASS_ORDER)]
+        cs = CAR_CLASSES[new]
+        col = cs["color_host"] if player_id == PLAYER_HOST else cs["color_client"]
+        car._body_color = col
+        car.set_class(new)
 
     def reset_for_mode(self, new_mode: int) -> None:
         """
@@ -466,9 +643,8 @@ class Game:
         collected_by leeren, damit beide Spieler alle Objekte einsammeln können.
         Wird aufgerufen wenn Host zwischen Modus 1/2/3 wechselt.
         """
-        pvp = (new_mode == 3)
-        for obj in (*self.canisters, *self.boosts, *self.oils,
-                    *self.item_boxes):
+        pvp = new_mode == 3
+        for obj in (*self.canisters, *self.boosts, *self.oils, *self.item_boxes):
             obj.set_pvp_mode(pvp)
             obj.collected_by.clear()
         self.boomerangs.clear()
@@ -477,21 +653,23 @@ class Game:
 
     def _resolve_car_collision(self) -> None:
         s0, s1 = self.cars[0].state, self.cars[1].state
-        r    = self.cars[0].get_radius()
+        r = self.cars[0].get_radius()
         dist = math.hypot(s0.x - s1.x, s0.y - s1.y)
         if dist < r * 2 and dist > 0.1:
             nx = (s0.x - s1.x) / dist
             ny = (s0.y - s1.y) / dist
             overlap = r * 2 - dist
-            s0.x += nx * overlap * 0.5; s0.y += ny * overlap * 0.5
-            s1.x -= nx * overlap * 0.5; s1.y -= ny * overlap * 0.5
-            v0, v1   = s0.speed, s1.speed
+            s0.x += nx * overlap * 0.5
+            s0.y += ny * overlap * 0.5
+            s1.x -= nx * overlap * 0.5
+            s1.y -= ny * overlap * 0.5
+            v0, v1 = s0.speed, s1.speed
             s0.speed = v1 * 0.6
             s1.speed = v0 * 0.6
 
     def _update_camera_pvp(self, dt: float) -> None:
         s0, s1 = self.cars[0].state, self.cars[1].state
-        dist        = math.hypot(s0.x - s1.x, s0.y - s1.y)
+        dist = math.hypot(s0.x - s1.x, s0.y - s1.y)
         target_zoom = max(0.35, min(1.0, 600.0 / max(dist, 600.0)))
         self.camera.zoom += (target_zoom - self.camera.zoom) * 0.05
         self.camera.update(s0.x, s0.y, dt)
@@ -499,7 +677,7 @@ class Game:
     # ─── Rendering ───────────────────────────────────────────────────────────
 
     def draw_world(self, surface: pygame.Surface) -> None:
-        zoom         = self.camera.zoom
+        zoom = self.camera.zoom
         off_x, off_y = self.camera.offset()
         bg_color = getattr(getattr(self.track, "theme", None), "bg_fill", GRASS_DARK)
         surface.fill(bg_color)
@@ -537,25 +715,37 @@ class Game:
     def draw_pings(self, surface: pygame.Surface) -> None:
         for wx, wy, timer in self.pings:
             sx, sy = self.camera.w2s(wx, wy)
-            frac   = max(0.0, timer / PING_DURATION)
+            frac = max(0.0, timer / PING_DURATION)
             if int(timer * PING_BLINK_HZ * 2) % 2 != 0:
                 continue
-            alpha  = int(max(60, 255 * frac))
+            alpha = int(max(60, 255 * frac))
             radius = int(max(4, 14 + 6 * frac))
-            size   = radius * 2 + 24; mid = size // 2
-            tmp    = pygame.Surface((size, size), pygame.SRCALPHA)
+            size = radius * 2 + 24
+            mid = size // 2
+            tmp = pygame.Surface((size, size), pygame.SRCALPHA)
             pygame.draw.circle(tmp, (0, 220, 255, alpha), (mid, mid), radius, 2)
             arm = radius + 7
-            for dx, dy in [(arm,0),(-arm,0),(0,arm),(0,-arm)]:
-                pygame.draw.line(tmp, (0,220,255,alpha), (mid,mid),
-                                 (mid+dx//2, mid+dy//2), 2)
+            for dx, dy in [(arm, 0), (-arm, 0), (0, arm), (0, -arm)]:
+                pygame.draw.line(
+                    tmp,
+                    (0, 220, 255, alpha),
+                    (mid, mid),
+                    (mid + dx // 2, mid + dy // 2),
+                    2,
+                )
             pygame.draw.circle(tmp, (255, 255, 100, alpha), (mid, mid), 4)
             surface.blit(tmp, (sx - mid, sy - mid))
 
     def draw_hud(self, surface: pygame.Surface) -> None:
         s = self.cars[0].state
-        self.hud.draw(surface, s.speed, s.fuel, self.elapsed_time,
-                      inventory=self.cars[0].inventory)
+        self.hud.draw(
+            surface,
+            s.speed,
+            s.fuel,
+            self.elapsed_time,
+            inventory=self.cars[0].inventory,
+            car_class=self.cars[0].car_class,
+        )
         if not self.game_over and self._race_started:
             if self.track.surface_at(s.x, s.y) == "grass":
                 lbl = self._warn_font.render("NEBEN DER STRECKE", True, YELLOW)
@@ -563,20 +753,21 @@ class Game:
 
     def draw_countdown(self, surface: pygame.Surface) -> None:
         if self._countdown > 0:
-            step_idx = min(int(self._countdown / COUNTDOWN_STEP_DURATION),
-                           len(COUNTDOWN_STEPS) - 1)
-            num   = COUNTDOWN_STEPS[-(step_idx + 1)]
+            step_idx = min(
+                int(self._countdown / COUNTDOWN_STEP_DURATION), len(COUNTDOWN_STEPS) - 1
+            )
+            num = COUNTDOWN_STEPS[-(step_idx + 1)]
             color = [RED, ORANGE, YELLOW][min(step_idx, 2)]
-            lbl   = self._countdown_font.render(str(num), True, color)
-            sx    = (SCREEN_W - lbl.get_width()) // 2
-            sy    = (SCREEN_H - lbl.get_height()) // 2
-            shd   = self._countdown_font.render(str(num), True, BLACK)
+            lbl = self._countdown_font.render(str(num), True, color)
+            sx = (SCREEN_W - lbl.get_width()) // 2
+            sy = (SCREEN_H - lbl.get_height()) // 2
+            shd = self._countdown_font.render(str(num), True, BLACK)
             surface.blit(shd, (sx + 4, sy + 4))
             surface.blit(lbl, (sx, sy))
         elif self._go_timer > 0:
             lbl = self._countdown_font.render("GO!", True, GREEN)
-            sx  = (SCREEN_W - lbl.get_width()) // 2
-            sy  = (SCREEN_H - lbl.get_height()) // 2
+            sx = (SCREEN_W - lbl.get_width()) // 2
+            sy = (SCREEN_H - lbl.get_height()) // 2
             shd = self._countdown_font.render("GO!", True, BLACK)
             surface.blit(shd, (sx + 4, sy + 4))
             surface.blit(lbl, (sx, sy))
@@ -600,33 +791,67 @@ class Game:
         lbl = self._win_font.render(txt, True, color)
         surface.blit(lbl, ((SCREEN_W - lbl.get_width()) // 2, cy))
         cy += lbl.get_height() + 10
-        mins  = int(self.elapsed_time) // 60
-        secs  = int(self.elapsed_time) % 60
-        cs    = int((self.elapsed_time % 1) * 100)
-        t_lbl = self._sub_font.render(f"Zeit: {mins:02d}:{secs:02d}.{cs:02d}", True, WHITE)
+        mins = int(self.elapsed_time) // 60
+        secs = int(self.elapsed_time) % 60
+        cs = int((self.elapsed_time % 1) * 100)
+        t_lbl = self._sub_font.render(
+            f"Zeit: {mins:02d}:{secs:02d}.{cs:02d}", True, WHITE
+        )
         surface.blit(t_lbl, ((SCREEN_W - t_lbl.get_width()) // 2, cy))
         cy += t_lbl.get_height() + 28
         r_lbl = self._sub_font.render("[R]  Neustart", True, CYAN)
         m_lbl = self._sub_font.render("[M]  Hauptmenü", True, YELLOW)
         surface.blit(r_lbl, ((SCREEN_W - r_lbl.get_width()) // 2, cy))
-        surface.blit(m_lbl, ((SCREEN_W - m_lbl.get_width()) // 2,
-                              cy + r_lbl.get_height() + 12))
+        surface.blit(
+            m_lbl, ((SCREEN_W - m_lbl.get_width()) // 2, cy + r_lbl.get_height() + 12)
+        )
 
     def draw_pause_overlay(self, surface: pygame.Surface) -> None:
-        """Pause-Overlay: halbtransparent + PAUSE-Text + Steuerungs-Hinweis."""
+        """Erweitertes Pause-Overlay mit Lobby/Quit-Buttons (Phase 11)."""
         overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 140))
+        overlay.fill((0, 0, 0, 160))
         surface.blit(overlay, (0, 0))
+
+        cx = SCREEN_W // 2
+        bw, bh, gap = 300, 52, 14
+        labels = [
+            ("resume", "[P/ESC]  Weiter spielen", (40, 90, 40)),
+            ("lobby", "[L]      Zur Lobby", (40, 60, 120)),
+            ("quit", "[Q]      Spiel beenden", (90, 30, 30)),
+        ]
+        total_h = len(labels) * (bh + gap) - gap
+        y0 = SCREEN_H // 2 - total_h // 2 + 30
+
+        # Titel
         lbl = self._pause_font.render("PAUSE", True, CYAN)
         shd = self._pause_font.render("PAUSE", True, BLACK)
-        sx  = (SCREEN_W - lbl.get_width()) // 2
-        sy  = SCREEN_H // 2 - lbl.get_height() // 2 - 20
-        surface.blit(shd, (sx + 3, sy + 3))
-        surface.blit(lbl, (sx, sy))
-        hint = self._sub_font.render(
-            "[P] Weiter  |  [R] Neustart  |  [ESC] Beenden", True, WHITE)
-        surface.blit(hint, ((SCREEN_W - hint.get_width()) // 2,
-                             sy + lbl.get_height() + 20))
+        tx = cx - lbl.get_width() // 2
+        ty = y0 - lbl.get_height() - 16
+        surface.blit(shd, (tx + 3, ty + 3))
+        surface.blit(lbl, (tx, ty))
+
+        mouse = pygame.mouse.get_pos()
+        self._pause_btn_rects = {}
+        for key, text, col in labels:
+            rect = pygame.Rect(cx - bw // 2, y0, bw, bh)
+            self._pause_btn_rects[key] = rect
+            hovered = rect.collidepoint(mouse)
+            bg = tuple(min(255, c + 30) for c in col) if hovered else col
+            # Shadow
+            pygame.draw.rect(surface, (0, 0, 0, 120), rect.move(3, 4), border_radius=8)
+            pygame.draw.rect(surface, bg, rect, border_radius=8)
+            pygame.draw.rect(surface, (150, 180, 220), rect, 1, border_radius=8)
+            btn_lbl = self._sub_font.render(
+                text, True, WHITE if hovered else (200, 210, 230)
+            )
+            surface.blit(
+                btn_lbl,
+                (
+                    rect.centerx - btn_lbl.get_width() // 2,
+                    rect.centery - btn_lbl.get_height() // 2,
+                ),
+            )
+            y0 += bh + gap
 
     def draw(self) -> None:
         self.draw_world(self.screen)
@@ -648,4 +873,3 @@ class Game:
             self.handle_events()
             self.update(dt)
             self.draw()
-        pygame.quit()

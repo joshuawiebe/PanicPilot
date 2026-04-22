@@ -84,10 +84,15 @@ class HostConnection:
         self._port       = port
         self._client_sock: Optional[socket.socket] = None
         self._lock       = threading.Lock()
-        self._inbox: Optional[dict] = None      # neuester Client-Input
+        self._inbox: Optional[dict] = None
+        self._client_lobby_inbox: Optional[dict] = None
+        self._client_left           = False
+        self._client_back_lobby     = False
+        self._client_requests_state = False
+        self._client_ready_for_map  = False   # Phase 11.2: 3-Wege-Handshake
         self._connected  = False
         self._running    = False
-        self._new_client = False  # True einmal nach jedem Accept → got_new_client()
+        self._new_client = False
 
     # ─── Öffentliche API ─────────────────────────────────────────────────────
 
@@ -142,7 +147,76 @@ class HostConnection:
         "type": "map" wird hinzugefügt, damit der Client die Nachricht
         vom normalen State-Strom unterscheiden kann.
         """
+        print("DEBUG net: Host send_map()")
         self.send_state({"type": "map", **track_data})
+
+    def send_lobby(self, data: dict) -> None:
+        """Sendet Host-Lobby-Status (Klasse, Modus-Info) an Client."""
+        self.send_state({"type": "lobby_host", **data})
+
+    def send_start(self, data: dict) -> None:
+        """Sendet Start-Signal mit Spielparametern an Client."""
+        print("DEBUG net: Host send_start()")
+        self.send_state({"type": "start", **data})
+
+    def send_kick(self) -> None:
+        """Kickt den Client aus der Lobby."""
+        self.send_state({"type": "kick"})
+
+    def send_back_to_lobby(self) -> None:
+        """Informiert den Client, dass das Spiel zur Lobby zurückkehrt."""
+        self.send_state({"type": "back_to_lobby"})
+
+    def client_wants_lobby(self) -> bool:
+        """True (einmalig) wenn Client das Rennen zur Lobby abbrechen will."""
+        with self._lock:
+            flag, self._client_back_lobby = self._client_back_lobby, False
+        return flag
+
+    def client_requests_state(self) -> bool:
+        """
+        True (einmalig) wenn Client einen sofortigen Lobby-Snapshot anfordert.
+        Passiert direkt nach TCP-Connect als Handshake-Bestätigung.
+        """
+        with self._lock:
+            flag, self._client_requests_state = self._client_requests_state, False
+        return flag
+
+    def client_ready_for_map(self) -> bool:
+        """
+        True (einmalig) wenn Client bereit ist, Streckendaten zu empfangen.
+        Teil des 3-Wege-Handshakes (Phase 11.2).
+        """
+        with self._lock:
+            flag, self._client_ready_for_map = self._client_ready_for_map, False
+        return flag
+
+    def reset_lobby_flags(self) -> None:
+        """
+        Setzt alle transienten Signalflags zurück.
+        Muss nach Spielende aufgerufen werden, bevor die Lobby erneut geöffnet wird,
+        damit alte Signale den nächsten Startvorgang nicht verfälschen.
+        """
+        with self._lock:
+            self._inbox                 = None
+            self._client_lobby_inbox    = None
+            self._client_left           = False
+            self._client_back_lobby     = False
+            self._client_requests_state = False
+            self._client_ready_for_map  = False
+            self._new_client            = False
+
+    def get_client_lobby(self) -> Optional[dict]:
+        """Gibt letztes Lobby-Update des Clients zurück (leert Puffer)."""
+        with self._lock:
+            msg, self._client_lobby_inbox = self._client_lobby_inbox, None
+        return msg
+
+    def client_left(self) -> bool:
+        """True (einmalig) wenn Client die Lobby verlassen hat."""
+        with self._lock:
+            flag, self._client_left = self._client_left, False
+        return flag
 
     def shutdown(self) -> None:
         self._running = False
@@ -186,8 +260,21 @@ class HostConnection:
         try:
             while self._running:
                 msg = recv_message(sock)
+                msg_type = msg.get("type", "")
                 with self._lock:
-                    self._inbox = msg   # immer nur neuesten behalten
+                    if msg_type == "lobby_client":
+                        self._client_lobby_inbox = msg
+                    elif msg_type == "leave":
+                        self._client_left = True
+                    elif msg_type == "back_to_lobby":
+                        self._client_back_lobby = True
+                    elif msg_type == "request_lobby_state":
+                        self._client_requests_state = True
+                    elif msg_type == "ready_for_map":
+                        self._client_ready_for_map = True
+                        print("DEBUG net: Host empfängt ready_for_map vom Client")
+                    else:
+                        self._inbox = msg   # Spiel-Input: immer nur neuesten behalten
         except (ConnectionError, OSError, json.JSONDecodeError) as e:
             log.warning(f"recv_loop beendet: {e}")
         finally:
@@ -222,9 +309,13 @@ class ClientConnection:
         self._port       = port
         self._sock: Optional[socket.socket] = None
         self._lock       = threading.Lock()
-        self._inbox: Optional[dict] = None        # neuester State
-        self._map_inbox: Optional[dict] = None    # einmaliger Map-Handshake
-        self._connected  = False
+        self._inbox: Optional[dict] = None
+        self._map_inbox: Optional[dict] = None
+        self._host_lobby_inbox: Optional[dict] = None
+        self._start_inbox: Optional[dict] = None
+        self._kick_flag       = False
+        self._host_back_lobby = False
+        self._connected       = False
 
     # ─── Öffentliche API ─────────────────────────────────────────────────────
 
@@ -242,7 +333,7 @@ class ClientConnection:
             sock.close()
             return False
 
-        sock.settimeout(None)   # auf blockierend für Recv-Thread umstellen
+        sock.settimeout(None)
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         with self._lock:
             self._sock      = sock
@@ -251,6 +342,13 @@ class ClientConnection:
         t = threading.Thread(target=self._recv_loop, daemon=True, name="client-recv")
         t.start()
         log.info(f"Verbunden mit {self._host_ip}:{self._port}")
+
+        # Phase 11.1: Sofort-Handshake – Host antwortet mit aktuellem Lobby-Zustand
+        try:
+            send_message(sock, {"type": "request_lobby_state"})
+        except (OSError, ConnectionError):
+            pass
+
         return True
 
     def send_input(self, input_dict: dict) -> None:
@@ -280,6 +378,66 @@ class ClientConnection:
             m, self._map_inbox = self._map_inbox, None
         return m
 
+    def send_lobby(self, data: dict) -> None:
+        """Sendet Client-Lobby-Status (Klasse) an Host."""
+        self.send_input({"type": "lobby_client", **data})
+
+    def send_leave(self) -> None:
+        """Teilt dem Host mit, dass Client die Lobby verlässt."""
+        self.send_input({"type": "leave"})
+
+    def send_request_lobby_state(self) -> None:
+        """Fordert vom Host einen sofortigen Lobby-Snapshot an."""
+        self.send_input({"type": "request_lobby_state"})
+
+    def get_host_lobby(self) -> Optional[dict]:
+        """Gibt letztes Lobby-Update des Hosts zurück (leert Puffer)."""
+        with self._lock:
+            msg, self._host_lobby_inbox = self._host_lobby_inbox, None
+        return msg
+
+    def get_start(self) -> Optional[dict]:
+        """Gibt Start-Signal zurück (leert Puffer). None wenn noch kein Start."""
+        with self._lock:
+            s, self._start_inbox = self._start_inbox, None
+        return s
+
+    def was_kicked(self) -> bool:
+        """True (einmalig) wenn Host den Client gekickt hat."""
+        with self._lock:
+            flag, self._kick_flag = self._kick_flag, False
+        return flag
+
+    def send_back_to_lobby(self) -> None:
+        """Informiert den Host, dass der Client das Rennen zur Lobby abbricht."""
+        self.send_input({"type": "back_to_lobby"})
+
+    def host_wants_lobby(self) -> bool:
+        """True (einmalig) wenn Host das Rennen zur Lobby zurückkehren will."""
+        with self._lock:
+            flag, self._host_back_lobby = self._host_back_lobby, False
+        return flag
+
+    def send_ready_for_map(self) -> None:
+        """
+        Sendet 'ready_for_map' an Host – Teil des 3-Wege-Handshakes (Phase 11.2).
+        Muss nach Empfang von 'start' gesendet werden, bevor Host die Karte schickt.
+        """
+        self.send_input({"type": "ready_for_map"})
+
+    def reset_lobby_flags(self) -> None:
+        """
+        Setzt alle transienten Signalflags zurück (Phase 11.2).
+        Aufrufen wenn Client aus dem Spiel zurück in die Lobby geht.
+        """
+        with self._lock:
+            self._inbox             = None
+            self._map_inbox         = None
+            self._host_lobby_inbox  = None
+            self._start_inbox       = None
+            self._kick_flag         = False
+            self._host_back_lobby   = False
+
     def is_connected(self) -> bool:
         with self._lock:
             return self._connected
@@ -293,8 +451,11 @@ class ClientConnection:
         """
         Empfängt Pakete vom Host (blockierend in eigenem Thread).
         Routing nach "type"-Feld:
-          "map"       → _map_inbox (einmaliger Handshake)
-          sonst       → _inbox     (laufender State-Strom)
+          "map"          → _map_inbox     (einmaliger Handshake)
+          "lobby_host"   → _host_lobby_inbox
+          "start"        → _start_inbox
+          "kick"         → _kick_flag
+          sonst          → _inbox         (laufender State-Strom)
         """
         with self._lock:
             sock = self._sock
@@ -305,6 +466,16 @@ class ClientConnection:
                 with self._lock:
                     if msg_type == "map":
                         self._map_inbox = msg
+                        print("DEBUG net: Client empfängt Karte (map-Paket)")
+                    elif msg_type == "lobby_host":
+                        self._host_lobby_inbox = msg
+                    elif msg_type == "start":
+                        self._start_inbox = msg
+                        print("DEBUG net: Client empfängt start-Paket")
+                    elif msg_type == "kick":
+                        self._kick_flag = True
+                    elif msg_type == "back_to_lobby":
+                        self._host_back_lobby = True
                     else:
                         self._inbox = msg
         except (ConnectionError, OSError, json.JSONDecodeError) as e:

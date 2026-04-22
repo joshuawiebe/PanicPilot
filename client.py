@@ -31,19 +31,25 @@ from net         import ClientConnection
 
 logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
 
-CLIENT_HOST_IP         = "0.0.0.0"
-NET_PORT               = 8081
+CLIENT_HOST_IP         = "127.0.0.1"
+NET_PORT               = 54321
 CONNECT_RETRY_INTERVAL = 2.0
 CONNECT_TIMEOUT        = 5.0
 LOCAL_PING_DURATION    = 1.0
 
 
 class ClientGame:
-    def __init__(self, host_ip: str) -> None:
-        pygame.init()
-        self.screen  = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+    def __init__(self, host_ip: str,
+                 net: "ClientConnection | None" = None,
+                 car_class_host: str = "balanced",
+                 car_class_client: str = "balanced") -> None:
+        self.screen  = pygame.display.get_surface() or pygame.display.set_mode((SCREEN_W, SCREEN_H))
         self.clock   = pygame.time.Clock()
         self.running = True
+
+        # Klassen beim Start aus der Lobby
+        self._car_class_host   = car_class_host
+        self._car_class_client = car_class_client
 
         self.track:     Optional[Track]       = None
         self.car:       Optional[Car]         = None   # Auto A (Host)
@@ -61,10 +67,6 @@ class ClientGame:
         self._client_inventory: str | None = None   # Inventar aus Host-Paket
         self.camera    = Camera()
 
-        # ── Phase 9: Car Classes ───────────────────────────────────────────── 
-        self.car_class_host   = DEFAULT_CAR_CLASS
-        self.car_class_client = DEFAULT_CAR_CLASS
-
         self._flash_surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
         self._fog_surf   = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
 
@@ -77,10 +79,15 @@ class ClientGame:
         self._go_timer   = 0.0
         self._paused     = False
 
-        self._pending_ping:     Optional[tuple] = None
-        self._pending_use_item: bool            = False   # SPACE one-shot
-        self._local_pings:      list[list]      = []
-        self._return_to_menu = False
+        self._pending_ping:       Optional[tuple] = None
+        self._pending_use_item:   bool            = False
+        self._pending_cycle_class: bool           = False   # C one-shot
+        self._local_pings:        list[list]      = []
+        self._return_to_menu  = False
+        self._return_to_lobby  = False   # Phase 11
+        self._lobby_initiator  = ""      # "self" | "remote"
+        self._pause_btn_rects: dict = {}
+        self._lobby_ready_sent = False   # Phase 11.3: ready_for_map schon gesendet?
 
         # Fonts
         self._status_font    = pygame.font.SysFont("Arial", 15, bold=True)
@@ -92,7 +99,12 @@ class ClientGame:
         self._pause_font     = pygame.font.SysFont("Arial", 80, bold=True)
         self._sub_font       = pygame.font.SysFont("Arial", 28, bold=True)
 
-        self._net     = ClientConnection(host_ip, NET_PORT)
+        if net is not None:
+            self._net      = net
+            self._owns_net = False
+        else:
+            self._net      = ClientConnection(host_ip, NET_PORT)
+            self._owns_net = True
         self._host_ip = host_ip
         self._update_caption()
 
@@ -106,43 +118,53 @@ class ClientGame:
     def _build_from_map(self, map_data: dict) -> None:
         self.track = Track.from_dict(map_data)
 
+        # Bug-Fix Phase 9: game_mode im Map-Paket → pvp_mode korrekt setzen
+        game_mode = int(map_data.get("game_mode", self._mode))
+        pvp = (game_mode == 3)
+
         sx = self.track.start_x
         sy = self.track.start_y
         sa = self.track.start_angle
         rad = math.radians(sa)
 
-        # Phase 5.3: nebeneinander starten – identisch zu game.py
         side_x      = math.cos(rad)
         side_y      = math.sin(rad)
         side_offset = 36
 
-        # ── Phase 9: Car Classes verwenden ─────────────────────────────────────
-        color_host   = CAR_CLASSES[self.car_class_host]["color"]
-        color_client = CAR_CLASSES[self.car_class_client]["color"]
+        # Klassen aus Lobby-Auswahl
+        cls0 = self._car_class_host
+        cls1 = self._car_class_client
+        cs0  = CAR_CLASSES.get(cls0, CAR_CLASSES["balanced"])
+        cs1  = CAR_CLASSES.get(cls1, CAR_CLASSES["balanced"])
 
         self.car   = Car(sx - side_x * side_offset, sy - side_y * side_offset,
-                         sa, initial_fuel=FUEL_MAX, body_color=color_host,
-                         car_class=self.car_class_host)
+                         sa, initial_fuel=FUEL_MAX,
+                         body_color=cs0["color_host"],   car_class=cls0)
         self.car_b = Car(sx + side_x * side_offset, sy + side_y * side_offset,
-                         sa, initial_fuel=FUEL_MAX, body_color=color_client,
-                         car_class=self.car_class_client)
+                         sa, initial_fuel=FUEL_MAX,
+                         body_color=cs1["color_client"], car_class=cls1)
 
-        self.canisters = [
+        def _make_entity(cls_fn, lst, pvp_flag):
+            for obj in lst:
+                obj.set_pvp_mode(pvp_flag)
+            return lst
+
+        self.canisters = _make_entity(None, [
             FuelCanister(x, y, canister_id=i)
             for i, (x, y) in enumerate(self.track.canister_positions())
-        ]
-        self.boosts = [
+        ], pvp)
+        self.boosts = _make_entity(None, [
             BoostPad(x, y, angle, pad_id=i)
             for i, (x, y, angle) in enumerate(self.track.boost_positions())
-        ]
-        self.oils = [
+        ], pvp)
+        self.oils = _make_entity(None, [
             OilSlick(x, y, slick_id=i)
             for i, (x, y) in enumerate(self.track.oil_positions())
-        ]
-        self.item_boxes = [
+        ], pvp)
+        self.item_boxes = _make_entity(None, [
             ItemBox(x, y, box_id=i)
             for i, (x, y) in enumerate(self.track.box_positions())
-        ]
+        ], pvp)
         self.entity_particles = EntityParticleSystem()
         self._client_inventory = None
         self.boomerangs = []
@@ -157,6 +179,38 @@ class ClientGame:
     # ── Verbindungs-Loop ─────────────────────────────────────────────────────
 
     def _connect_loop(self) -> bool:
+        """
+        Phase 11.3:
+        Wenn bereits verbunden (aus Lobby):
+          - ready_for_map wurde bereits in der Lobby-Loop gesendet
+            (self._lobby_ready_sent=True) → NICHT nochmals senden.
+          - Nur auf Kartendaten warten (max. MAP_WAIT_TIMEOUT s).
+          - Bei Timeout → False.
+        Sonst (standalone): Verbinden + ready_for_map senden + warten.
+        """
+        MAP_WAIT_TIMEOUT = 5.0
+
+        if self._net.is_connected():
+            if not self._lobby_ready_sent:
+                # Standalone-Lobby oder Sicherheits-Fallback
+                print("DEBUG: Client sendet ready_for_map in _connect_loop (Fallback)")
+                self._net.send_ready_for_map()
+            else:
+                print("DEBUG: Client wartet auf Karte (ready_for_map bereits gesendet)")
+            deadline = time.time() + MAP_WAIT_TIMEOUT
+            while self.running and time.time() < deadline:
+                self._draw_waiting_screen("Warte auf Streckendaten …")
+                m = self._net.get_map()
+                if m:
+                    print("DEBUG: Client empfängt Karte – baue Strecke …")
+                    self._build_from_map(m)
+                    return True
+                self._drain_events(0.08)
+            print("DEBUG: Client Map-Timeout nach", MAP_WAIT_TIMEOUT, "s")
+            self._draw_waiting_screen("Zeitüberschreitung – zurück zur Lobby …")
+            pygame.time.wait(1800)
+            return False
+
         attempt = 0
         while self.running:
             attempt += 1
@@ -164,14 +218,18 @@ class ClientGame:
             if not self._net.connect(timeout=CONNECT_TIMEOUT):
                 self._drain_events(CONNECT_RETRY_INTERVAL)
                 continue
-            deadline = time.time() + 10.0
+            print("DEBUG: Standalone-Connect erfolgreich, sende ready_for_map")
+            self._net.send_ready_for_map()
+            deadline = time.time() + MAP_WAIT_TIMEOUT
             while self.running and time.time() < deadline:
-                self._draw_waiting_screen("Warte auf Strecken-Daten …")
+                self._draw_waiting_screen("Warte auf Streckendaten …")
                 m = self._net.get_map()
                 if m:
+                    print("DEBUG: Client empfängt Karte – baue Strecke …")
                     self._build_from_map(m)
                     return True
-                self._drain_events(0.1)
+                self._drain_events(0.08)
+            print("DEBUG: Standalone Map-Timeout, neuer Verbindungsversuch")
             self._net.shutdown()
             self._net = ClientConnection(self._host_ip, NET_PORT)
         return False
@@ -190,7 +248,8 @@ class ClientGame:
 
     def run(self) -> None:
         if not self._connect_loop():
-            pygame.quit()
+            # Phase 11.2: Timeout oder Verbindungsfehler → zurück zur Lobby
+            self._return_to_lobby = True
             return
 
         send_timer = 0.0
@@ -202,12 +261,23 @@ class ClientGame:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if self._paused:
+                        self._handle_pause_click(event.pos)
                 elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        self.running = False
+                    if event.key in (pygame.K_ESCAPE, pygame.K_p):
+                        if self._game_over or self._winner:
+                            if event.key == pygame.K_ESCAPE:
+                                self.running = False
+                        else:
+                            self._paused = not self._paused
                     elif event.key == pygame.K_m and (self._game_over or self._winner):
                         self.running         = False
                         self._return_to_menu = True
+                    elif self._paused and event.key == pygame.K_l:
+                        self._do_return_to_lobby()
+                    elif self._paused and event.key == pygame.K_q:
+                        self.running = False
                     elif event.key == pygame.K_o and self._mode == 2:
                         self.camera.handle_zoom(-1)
                     elif event.key == pygame.K_p and self._mode == 2:
@@ -228,6 +298,11 @@ class ClientGame:
                 pygame.time.wait(60)
                 continue
 
+            # Phase 11: Host will zurück zur Lobby?
+            if self._net.host_wants_lobby():
+                self._do_return_to_lobby()
+                break
+
             # Map-Update (nach Reset)
             m = self._net.get_map()
             if m:
@@ -239,7 +314,6 @@ class ClientGame:
                 send_timer = 0.0
                 keys = pygame.key.get_pressed()
                 if self._mode == 3:
-                    # from_keys already captures SPACE via use_item
                     inp = InputState.from_keys(keys)
                 elif self._mode == 1:
                     inp = InputState.client_keys(keys,
@@ -249,7 +323,7 @@ class ClientGame:
                                                  ping_pos=self._pending_ping,
                                                  use_item=self._pending_use_item)
                     self._pending_ping = None
-                self._pending_use_item = False
+                self._pending_use_item    = False
                 self._net.send_input(inp.to_dict())
 
             # State empfangen
@@ -291,8 +365,15 @@ class ClientGame:
 
             self._draw()
 
-        self._net.shutdown()
-        pygame.quit()
+        # Phase 11: Client hat Lobby initiiert → Host informieren
+        if self._return_to_lobby and getattr(self, "_lobby_initiator", "") != "remote":
+            try: self._net.send_back_to_lobby()
+            except Exception: pass
+        # Phase 11.2: Flags nullen damit nächste Startrunde sauber ist
+        if self._net.is_connected():
+            self._net.reset_lobby_flags()
+        if self._owns_net:
+            self._net.shutdown()
 
     # ── Adaptive Kamera PvP (Phase 5.3) ──────────────────────────────────────
 
@@ -313,21 +394,6 @@ class ClientGame:
                            s_b.state.y if hasattr(s_b, 'state') else s_b.y, dt)
 
     # ── State übernehmen ─────────────────────────────────────────────────────
-
-    def _reset_mode_entities(self) -> None:
-        """
-        Phase 9: Wird aufgerufen wenn sich der Modus während des Spiels ändert.
-        Setzt PvP-Mode auf allen Entitäten zurück und cleared collected_by.
-        """
-        pvp = (self._mode == 3)
-        for obj in (*self.canisters, *self.boosts, *self.oils, *self.item_boxes):
-            obj.set_pvp_mode(pvp)
-            obj.collected_by.clear()
-        self.boomerangs.clear()
-        if self.car:
-            self.car.inventory = None
-        if self.car_b:
-            self.car_b.inventory = None
 
     def _apply_state(self, packet: dict) -> None:
         if self.car is None:
@@ -352,37 +418,15 @@ class ClientGame:
         if hf > self._fuel_flash:
             self._fuel_flash = hf
 
-        # ── Phase 9: Mode-Wechsel betitelt Entitäts-Reset ────────────────────
         new_mode = int(packet.get("mode", self._mode))
         if new_mode != self._mode:
             self._mode = new_mode
-            self._reset_mode_entities()
+            # Bug-Fix: pvp_mode auf allen Entitäten aktualisieren
+            pvp = (new_mode == 3)
+            for obj in (*self.canisters, *self.boosts, *self.oils, *self.item_boxes):
+                obj.set_pvp_mode(pvp)
+                obj.collected_by.clear()
             self._update_caption()
-
-        # ── Phase 9: Car Classes empfangen ─────────────────────────────────────
-        new_car0_class = packet.get("car0_class", self.car_class_host)
-        new_car1_class = packet.get("car1_class", self.car_class_client)
-        
-        # Wenn sich Klasse ändert, Farbe/Sprite aktualisieren
-        if new_car0_class != self.car_class_host and self.car:
-            self.car_class_host = new_car0_class
-            old_state = self.car.state
-            color_host = CAR_CLASSES[self.car_class_host]["color"]
-            # Auto mit neuer Klasse und Sprite neu erzeugen
-            self.car = Car(old_state.x, old_state.y, old_state.angle,
-                          initial_fuel=old_state.fuel, body_color=color_host,
-                          car_class=self.car_class_host)
-            # Zustand kopieren (Inventar, etc)
-            self.car.state = old_state
-
-        if new_car1_class != self.car_class_client and self.car_b and self._mode == 3:
-            self.car_class_client = new_car1_class
-            old_state_b = self.car_b.state
-            color_client = CAR_CLASSES[self.car_class_client]["color"]
-            self.car_b = Car(old_state_b.x, old_state_b.y, old_state_b.angle,
-                            initial_fuel=old_state_b.fuel, body_color=color_client,
-                            car_class=self.car_class_client)
-            self.car_b.state = old_state_b
 
         # Auto B (Modus 3)
         if "car1" in packet and self.car_b:
@@ -427,10 +471,22 @@ class ClientGame:
                 self.boomerangs[i].apply_net_dict(d)
         # Inaktive entfernen
         self.boomerangs = [b for b in self.boomerangs if b.active]
-        # Inventar-Sync: Host ist autoritativ über den Zustand
+        # Inventar-Sync: Host ist autoritativ
         inv_key = "car1_inv" if self._mode == 3 else "car0_inv"
         raw_inv = packet.get(inv_key, "")
         self._client_inventory = raw_inv if raw_inv else None
+
+        # Fahrzeugklassen-Sync (Phase 9)
+        c0_cls = packet.get("car0_class", "balanced")
+        c1_cls = packet.get("car1_class", "balanced")
+        if self.car and c0_cls != self.car.car_class:
+            cs = CAR_CLASSES.get(c0_cls, CAR_CLASSES["balanced"])
+            self.car._body_color = cs["color_host"]
+            self.car.set_class(c0_cls)
+        if self.car_b and c1_cls != self.car_b.car_class:
+            cs = CAR_CLASSES.get(c1_cls, CAR_CLASSES["balanced"])
+            self.car_b._body_color = cs["color_client"]
+            self.car_b.set_class(c1_cls)
 
     # ── Rendering ─────────────────────────────────────────────────────────────
 
@@ -493,8 +549,10 @@ class ClientGame:
                      else self.car.state.fuel)
             speed = (self.car_b.state.speed if self._mode == 3 and self.car_b
                      else self.car.state.speed)
+            inv_car = self.car_b if self._mode == 3 and self.car_b else self.car
             self.hud.draw(self.screen, speed, fuel, self._elapsed,
-                          inventory=self._client_inventory)
+                          inventory=self._client_inventory,
+                          car_class=inv_car.car_class if inv_car else "balanced")
 
         # Untergrundwarnung
         if not self._game_over and not self._paused:
@@ -514,20 +572,64 @@ class ClientGame:
         self._draw_status_overlay()
         pygame.display.flip()
 
+    # ── Phase 11: Pause-Helfer ────────────────────────────────────────────────
+
+    def _do_return_to_lobby(self) -> None:
+        self._return_to_lobby = True
+        self._lobby_initiator = "self"
+        self._paused          = False
+        self.running          = False
+
+    def _handle_pause_click(self, pos: tuple) -> None:
+        for key, rect in self._pause_btn_rects.items():
+            if rect.collidepoint(pos):
+                if key == "resume": self._paused = False
+                elif key == "lobby": self._do_return_to_lobby()
+                elif key == "quit":  self.running = False
+                return
+
+    # ── Rendering ─────────────────────────────────────────────────────────────
+
     def _draw_pause_overlay(self) -> None:
-        """Pause-Overlay – identisch zum Host-Overlay in game.py."""
+        """Erweitertes Pause-Overlay mit Lobby/Quit-Buttons (Phase 11)."""
         overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 140))
+        overlay.fill((0, 0, 0, 160))
         self.screen.blit(overlay, (0, 0))
+
+        cx  = SCREEN_W // 2
+        bw, bh, gap = 300, 52, 14
+        labels = [
+            ("resume", "[P/ESC]  Weiter spielen",  (40, 90, 40)),
+            ("lobby",  "[L]      Zur Lobby",        (40, 60, 120)),
+            ("quit",   "[Q]      Spiel beenden",    (90, 30, 30)),
+        ]
+        total_h = len(labels) * (bh + gap) - gap
+        y0 = SCREEN_H // 2 - total_h // 2 + 30
+
         lbl = self._pause_font.render("PAUSE", True, CYAN)
         shd = self._pause_font.render("PAUSE", True, BLACK)
-        sx  = (SCREEN_W - lbl.get_width()) // 2
-        sy  = SCREEN_H // 2 - lbl.get_height() // 2 - 20
-        self.screen.blit(shd, (sx + 3, sy + 3))
-        self.screen.blit(lbl, (sx, sy))
-        hint = self._sub_font.render("Warte auf Host …", True, WHITE)
-        self.screen.blit(hint, ((SCREEN_W - hint.get_width()) // 2,
-                                 sy + lbl.get_height() + 20))
+        tx  = cx - lbl.get_width() // 2
+        ty  = y0 - lbl.get_height() - 16
+        self.screen.blit(shd, (tx + 3, ty + 3))
+        self.screen.blit(lbl, (tx, ty))
+
+        mouse = pygame.mouse.get_pos()
+        self._pause_btn_rects = {}
+        for key, text, col in labels:
+            rect = pygame.Rect(cx - bw // 2, y0, bw, bh)
+            self._pause_btn_rects[key] = rect
+            hovered = rect.collidepoint(mouse)
+            bg = tuple(min(255, c + 30) for c in col) if hovered else col
+            pygame.draw.rect(self.screen, (0, 0, 0),
+                             rect.move(3, 4), border_radius=8)
+            pygame.draw.rect(self.screen, bg, rect, border_radius=8)
+            pygame.draw.rect(self.screen, (150, 180, 220), rect, 1, border_radius=8)
+            btn_lbl = self._sub_font.render(text, True,
+                                            WHITE if hovered else (200, 210, 230))
+            self.screen.blit(btn_lbl,
+                             (rect.centerx - btn_lbl.get_width()  // 2,
+                              rect.centery - btn_lbl.get_height() // 2))
+            y0 += bh + gap
 
     def _draw_countdown_overlay(self) -> None:
         if self._countdown > 0:

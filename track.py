@@ -143,40 +143,75 @@ _BOUNDARY_THICKNESS = 80
 
 def _tile_boundary_walls(tile_type: str, wx: float, wy: float) -> list[tuple]:
     """
-    Gibt Boundary-Wände zurück, die NUR an den absoluten Außenkanten der Tile liegen.
-    Gras- und Randstreifen bleiben immer befahrbar – Wände verhindern nur das
-    Verlassen der Tile-Grenzen.  Keine Wände entlang des Asphalts.
+    Gibt Liste von (x, y, w, h) Welt-Koordinaten für Boundary-Wände zurück.
+    Wände liegen an den Rändern der Tile, nicht an der Fahrbahn.
+    So kann man über den Randstreifen fahren, aber nicht aus der Tile heraus.
+
+    Prinzip: Jede Tile bekommt 4 schmale Randwände (oben, unten, links, rechts).
+    Die Öffnungen (Verbindungen zur nächsten Tile) werden ausgespart.
     """
     T  = TILE_SIZE
-    bw = _BOUNDARY_THICKNESS
+    bw = _BOUNDARY_THICKNESS   # Wanddicke
+    r1 = INNER_R               # = T//3
+    r2 = OUTER_R               # = 2*T//3
 
     walls = []
 
-    if tile_type in (STRAIGHT_H, FINISH_H, NARROW_H):
-        # Nur Außenkanten oben/unten der Tile
-        walls.append((wx, wy,          T, bw))
-        walls.append((wx, wy + T - bw, T, bw))
+    if tile_type in (STRAIGHT_H, FINISH_H):
+        # Fahrt horizontal → oben und unten blockieren
+        walls.append((wx,       wy,          T,  bw))
+        walls.append((wx,       wy + T - bw, T,  bw))
 
-    elif tile_type in (STRAIGHT_V, FINISH_V, NARROW_V):
-        # Nur Außenkanten links/rechts der Tile
+    elif tile_type in (STRAIGHT_V, FINISH_V):
+        # Fahrt vertikal → links und rechts blockieren
         walls.append((wx,          wy, bw, T))
         walls.append((wx + T - bw, wy, bw, T))
 
+    elif tile_type == NARROW_H:
+        # Schmale Fahrbahn horizontal – Wände dichter an Mitte
+        nw = T // NARROW_W
+        half = T // 2
+        walls.append((wx, wy,               T, half - nw // 2))
+        walls.append((wx, wy + half + nw // 2, T, half - nw // 2))
+
+    elif tile_type == NARROW_V:
+        # Schmale Fahrbahn vertikal – Wände dichter an Mitte
+        nw = T // NARROW_W
+        half = T // 2
+        walls.append((wx,               wy, half - nw // 2, T))
+        walls.append((wx + half + nw // 2, wy, half - nw // 2, T))
+
     elif tile_type in (CURVE_BL, CURVE_BR, CURVE_TL, CURVE_TR):
-        # Kurven: nur die zwei geschlossenen Außenkanten der Tile.
-        # Die zwei offenen Seiten (Fahrbahn-Anschlüsse) bleiben wandfrei.
-        if tile_type == CURVE_BL:   # öffnet nach links + unten
-            walls.append((wx + T - bw, wy, bw, T))   # rechte Kante
-            walls.append((wx, wy, T, bw))             # obere Kante
-        elif tile_type == CURVE_BR:  # öffnet nach rechts + unten
-            walls.append((wx, wy, bw, T))             # linke Kante
-            walls.append((wx, wy, T, bw))             # obere Kante
-        elif tile_type == CURVE_TL:  # öffnet nach links + oben
-            walls.append((wx + T - bw, wy, bw, T))   # rechte Kante
-            walls.append((wx, wy + T - bw, T, bw))   # untere Kante
-        elif tile_type == CURVE_TR:  # öffnet nach rechts + oben
-            walls.append((wx, wy, bw, T))             # linke Kante
-            walls.append((wx, wy + T - bw, T, bw))   # untere Kante
+        # Kurven: vier Randwände, kurz damit Anschlüsse frei bleiben
+        # Gemeinsam: Eckwände aller vier Seiten mit Lücken für Fahrbahnöffnungen
+        # Die genauen Lücken entsprechen dem Fahrbahnband [r1..r2] auf jeder Seite
+        if tile_type == CURVE_BL:   # Pivot unten-links, öffnet links+unten
+            # Oben: volle Breite
+            walls.append((wx,       wy,          T,         bw))
+            # Rechts: volle Höhe
+            walls.append((wx + T - bw, wy,       bw,        T))
+            # Links: nur Ecken (Lücke für Ausfahrt nach links)
+            walls.append((wx,       wy,          bw,        r1))          # links oben
+            # Unten: nur Ecke rechts (Ausfahrt nach unten)
+            walls.append((wx + r2,  wy + T - bw, T - r2,   bw))          # unten rechts
+
+        elif tile_type == CURVE_BR:  # Pivot unten-rechts, öffnet rechts+unten
+            walls.append((wx,       wy,          T,         bw))
+            walls.append((wx,       wy,          bw,        T))
+            walls.append((wx + T - bw, wy,       bw,        r1))
+            walls.append((wx,       wy + T - bw, r1,        bw))
+
+        elif tile_type == CURVE_TL:  # Pivot oben-links, öffnet links+oben
+            walls.append((wx,       wy + T - bw, T,         bw))
+            walls.append((wx + T - bw, wy,       bw,        T))
+            walls.append((wx,       wy + r2,     bw,        T - r2))
+            walls.append((wx + r2,  wy,          T - r2,    bw))
+
+        elif tile_type == CURVE_TR:  # Pivot oben-rechts, öffnet rechts+oben
+            walls.append((wx,       wy + T - bw, T,         bw))
+            walls.append((wx,       wy,          bw,        T))
+            walls.append((wx + T - bw, wy + r2,  bw,        T - r2))
+            walls.append((wx,       wy,          r1,        bw))
 
     # Filter: nur Wände mit positiver Größe
     return [(x, y, max(1, w), max(1, h)) for x, y, w, h in walls if w > 0 and h > 0]
@@ -322,86 +357,26 @@ class TrackTile:
                 pygame.draw.rect(s, c["centerline"], (mid - 2, y, 4, 38))
 
     def _draw_narrow_h(self, s, T, c):
-        """
-        Schmale horizontale Fahrbahn mit Trapez-Übergängen an beiden Enden.
-        Breite Seiten: volle T//3 Fahrbahnbreite an den Rändern (Anschluss).
-        Mitte:         schmale T//NARROW_W Fahrbahn.
-        """
-        nw_narrow = T // NARROW_W        # schmale Breite in der Mitte
-        nw_full   = T // 3               # volle Breite an den Rändern
-        mid       = T // 2
-        taper     = T // 5               # Länge des Taper-Übergangs
-
-        # Asphalt: volle Breite an den Rändern, schmal in der Mitte
-        # Linker Übergang (Trapez)
-        poly_left = [
-            (0,          mid - nw_full // 2),
-            (taper,      mid - nw_narrow // 2),
-            (taper,      mid + nw_narrow // 2),
-            (0,          mid + nw_full // 2),
-        ]
-        pygame.draw.polygon(s, c["road"], poly_left)
-
-        # Mittelteil (schmal)
-        pygame.draw.rect(s, c["road"], (taper, mid - nw_narrow // 2,
-                                         T - 2 * taper, nw_narrow))
-
-        # Rechter Übergang (Trapez, gespiegelt)
-        poly_right = [
-            (T,          mid - nw_full // 2),
-            (T - taper,  mid - nw_narrow // 2),
-            (T - taper,  mid + nw_narrow // 2),
-            (T,          mid + nw_full // 2),
-        ]
-        pygame.draw.polygon(s, c["road"], poly_right)
-
-        # Randsteine links/rechts (nur in der schmalen Zone)
-        y_top = mid - nw_narrow // 2
-        y_bot = mid + nw_narrow // 2
-        self._curb_h(s, taper, T - taper, y_top - CURB_W, CURB_W, c)
-        self._curb_h(s, taper, T - taper, y_bot,           CURB_W, c)
-
-        # Mittellinie (gestrichelt)
-        for x in range(taper, T - taper, 60):
+        """Schmale horizontale Fahrbahn – T//NARROW_W breit."""
+        nw  = T // NARROW_W
+        ry  = T // 2 - nw // 2
+        pygame.draw.rect(s, c["road"], (0, ry, T, nw))
+        # Randsteine auf beiden Seiten
+        self._curb_h(s, 0, T, ry - CURB_W, CURB_W, c)
+        self._curb_h(s, 0, T, ry + nw,     CURB_W, c)
+        mid = T // 2
+        for x in range(0, T, 60):
             pygame.draw.rect(s, c["centerline"], (x, mid - 1, 38, 2))
 
     def _draw_narrow_v(self, s, T, c):
-        """Schmale vertikale Fahrbahn mit Trapez-Übergängen."""
-        nw_narrow = T // NARROW_W
-        nw_full   = T // 3
-        mid       = T // 2
-        taper     = T // 5
-
-        # Oberer Übergang
-        poly_top = [
-            (mid - nw_full // 2,   0),
-            (mid - nw_narrow // 2, taper),
-            (mid + nw_narrow // 2, taper),
-            (mid + nw_full // 2,   0),
-        ]
-        pygame.draw.polygon(s, c["road"], poly_top)
-
-        # Mittelteil
-        pygame.draw.rect(s, c["road"], (mid - nw_narrow // 2, taper,
-                                         nw_narrow, T - 2 * taper))
-
-        # Unterer Übergang
-        poly_bot = [
-            (mid - nw_full // 2,   T),
-            (mid - nw_narrow // 2, T - taper),
-            (mid + nw_narrow // 2, T - taper),
-            (mid + nw_full // 2,   T),
-        ]
-        pygame.draw.polygon(s, c["road"], poly_bot)
-
-        # Randsteine
-        x_left  = mid - nw_narrow // 2
-        x_right = mid + nw_narrow // 2
-        self._curb_v(s, x_left  - CURB_W, CURB_W, taper, T - taper, c)
-        self._curb_v(s, x_right,           CURB_W, taper, T - taper, c)
-
-        # Mittellinie
-        for y in range(taper, T - taper, 60):
+        """Schmale vertikale Fahrbahn – T//NARROW_W breit."""
+        nw  = T // NARROW_W
+        rx  = T // 2 - nw // 2
+        pygame.draw.rect(s, c["road"], (rx, 0, nw, T))
+        self._curb_v(s, rx - CURB_W, CURB_W, 0, T, c)
+        self._curb_v(s, rx + nw,     CURB_W, 0, T, c)
+        mid = T // 2
+        for y in range(0, T, 60):
             pygame.draw.rect(s, c["centerline"], (mid - 1, y, 2, 38))
 
     def _draw_finish_line_h(self, s, T, ry, rh, c):
@@ -647,32 +622,34 @@ class Track:
 
     def build_boundary_walls(self) -> list[tuple]:
         """
-        Tile-Rand-Wände für alle Kacheln (außer Ziel-Tile).
-        Auto kann neben der Fahrbahn (Gras/Randstreifen) fahren,
-        fällt aber nicht aus der Tile heraus.
+        Phase 10 Bugfix: Erzeugt Wände NUR an den absoluten Außenkanten
+        der gesamten Karte (Weltgrenze).
+        Das gesamte Innen-Gras ist frei befahrbar – keine Tile-internen Wände mehr.
         Gibt Liste von (x, y, w, h) in Weltkoordinaten zurück.
         """
-        result = []
-        for i, tile in enumerate(self.tiles):
-            if i == self._finish_tile_idx:
-                continue   # Ziel-Tile hat eigene Wände
-            result.extend(tile.boundary_walls())
-        return result
+        if not self.tiles:
+            return []
+        T  = TILE_SIZE
+        wt = _BOUNDARY_THICKNESS
+
+        min_wx = min(t.world_x for t in self.tiles)
+        max_wx = max(t.world_x for t in self.tiles) + T
+        min_wy = min(t.world_y for t in self.tiles)
+        max_wy = max(t.world_y for t in self.tiles) + T
+
+        tw = max_wx - min_wx
+        th = max_wy - min_wy
+
+        return [
+            (min_wx - wt, min_wy - wt, tw + 2 * wt, wt),  # oben
+            (min_wx - wt, max_wy,      tw + 2 * wt, wt),  # unten
+            (min_wx - wt, min_wy - wt, wt, th + 2 * wt),  # links
+            (max_wx,      min_wy - wt, wt, th + 2 * wt),  # rechts
+        ]
 
     def build_anticheat_walls(self) -> list[tuple]:
-        """Wände um das Ziel-Tile (Anti-Abkürzung)."""
-        if not self.tiles: return []
-        tile = self.tiles[self._finish_tile_idx]
-        T = TILE_SIZE; wx = tile.world_x; wy = tile.world_y
-        tt = tile.tile_type; r2 = OUTER_R; wt = 60; r1 = INNER_R
-        walls = []
-        if tt in (FINISH_H,):
-            walls.append((wx, wy, T, r1 - wt))
-            walls.append((wx, wy + r2 + wt, T, T - r2 - wt))
-        else:
-            walls.append((wx, wy, r1 - wt, T))
-            walls.append((wx + r2 + wt, wy, T - r2 - wt, T))
-        return [(x, y, max(1,w), max(1,h)) for x,y,w,h in walls if w>0 and h>0]
+        """Phase 10: Keine internen Anti-Cheat-Wände – Gras ist frei."""
+        return []
 
     # ── Ziellinie ─────────────────────────────────────────────────────────────
 

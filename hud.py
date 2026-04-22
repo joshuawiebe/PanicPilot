@@ -33,10 +33,12 @@ class HUD:
 
     def draw(self, surface: pygame.Surface,
              speed: float, fuel: float, elapsed: float,
-             inventory: str | None = None) -> None:
+             inventory: str | None = None,
+             car_class: str = "balanced") -> None:
 
         self._draw_panel(surface, speed, fuel, elapsed)
         self._draw_inventory(surface, inventory)
+        self._draw_class_badge(surface, car_class)
 
         fuel_pct = fuel / FUEL_MAX
         if fuel <= 0:
@@ -220,6 +222,16 @@ class HUD:
             item_lbl = self._font_md.render("?", True, WHITE)
             surface.blit(item_lbl, (box_x + slot_w//2 - item_lbl.get_width()//2,
                                     slot_y + slot_h//2 - item_lbl.get_height()//2))
+
+    def _draw_class_badge(self, surface: pygame.Surface, car_class: str) -> None:
+        """Kleines Klassen-Badge oben rechts im Panel (Phase 11: kein C=wechseln)."""
+        from settings import CAR_CLASSES
+        cs   = CAR_CLASSES.get(car_class, CAR_CLASSES["balanced"])
+        name = cs["display"]
+        col  = cs["color_host"]
+        px, py, pw = self.PANEL_X, self.PANEL_Y, self.PANEL_W
+        badge = self._font_sm.render(f"[ {name} ]", True, col)
+        surface.blit(badge, (px + pw - badge.get_width() - 6, py + 6))
 
     # ─── Hilfsmethoden ───────────────────────────────────────────────────────
 

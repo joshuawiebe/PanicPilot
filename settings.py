@@ -47,46 +47,57 @@ NUM_CANISTERS       =   3
 
 MAX_PARTICLES = 120
 
-# ── Auto-Klassen (Phase 9) ────────────────────────────────────────────────────
-# Jede Klasse hat unterschiedliche Physik-Parameter und Visualisierung
+# =============================================================================
+#  Audio-Einstellungen  –  Phase 12
+# =============================================================================
+#  Werte: 0-100  (werden zur Laufzeit durch die Einstellungs-Szene überschrieben)
+# =============================================================================
+MUSIC_VOLUME: int = 70   # Musik-Lautstärke (0-100)
+SFX_VOLUME:   int = 80   # Effekt-Lautstärke (0-100)
+
+# =============================================================================
+#  Car-Klassen  –  Phase 9
+# =============================================================================
+#  Jede Klasse definiert Multiplikatoren relativ zu den Basis-Werten oben.
+#  grip_mod:       Faktor auf den theme-basierten Grip (>1 = mehr Grip)
+#  grass_factor:   Überschreibt GRASS_SPEED_FACTOR für diese Klasse
+# =============================================================================
 CAR_CLASSES = {
     "balanced": {
-        "display_name": "Balanced",
-        "description": "Standard Handling & Geschwindigkeit",
-        "color": (210, 45, 45),      # Rot (Host-Standard)
-        "sprite_width": 1.0,          # Normal
-        "max_speed": 500.0,
-        "accel": 300.0,
-        "friction": 130.0,
-        "fuel_drain": 7.6,
-        "grass_grip": 1.0,            # Normal grip auf Gras
-        "ice_grip": 1.0,              # Normal grip auf Eis
+        "display":      "Balanced",
+        "color_host":   (210,  45,  45),   # Rot
+        "color_client": ( 30, 100, 210),   # Blau
+        "accel_mul":    1.00,
+        "speed_mul":    1.00,
+        "friction_mul": 1.00,
+        "fuel_mul":     1.00,
+        "grass_factor": GRASS_SPEED_FACTOR,
+        "grip_mod":     1.00,
+        "sprite_w":     24, "sprite_h": 36,
     },
     "speedster": {
-        "display_name": "Speedster",
-        "description": "Schnell aber rutschig",
-        "color": (255, 200, 0),       # Gelb
-        "sprite_width": 0.80,         # Schmal-Mittel
-        "max_speed": 620.0,           # +24% (bessere Balance)
-        "accel": 380.0,               # +27% (kontrollierbar)
-        "friction": 95.0,             # -27% (rutschig aber managebar)
-        "fuel_drain": 10.0,           # +32% (höherer Verbrauch)
-        "grass_grip": 0.65,           # Rutschig auf Gras
-        "ice_grip": 0.50,             # Rutschig auf Eis
+        "display":      "Speedster",
+        "color_host":   (255, 140,   0),   # Orange
+        "color_client": (255, 200,  50),   # Gelb
+        "accel_mul":    1.45,
+        "speed_mul":    1.35,
+        "friction_mul": 0.65,   # wenig Bremswirkung → schleudert
+        "fuel_mul":     1.55,
+        "grass_factor": GRASS_SPEED_FACTOR * 0.55,   # viel schlechter auf Gras
+        "grip_mod":     0.60,   # rutschig auf Eis/Öl
+        "sprite_w":     20, "sprite_h": 42,  # schmal & lang
     },
     "tank": {
-        "display_name": "Tank",
-        "description": "Langsam aber stabil",
-        "color": (160, 120, 50),      # Gold-Braun (bessere Sichtbarkeit)
-        "sprite_width": 1.30,         # Breiter
-        "max_speed": 390.0,           # -22% (weniger Handicap)
-        "accel": 260.0,               # -13% (besser spielbar)
-        "friction": 160.0,            # +23% (gutes Grip)
-        "fuel_drain": 5.5,            # -28% (effizienter)
-        "grass_grip": 0.85,           # Gutes Grip auf Gras
-        "ice_grip": 1.10,             # Gutes Grip auf Eis
+        "display":      "Tank",
+        "color_host":   ( 50, 160,  50),   # Grün
+        "color_client": ( 30, 120,  30),   # Dunkelgrün
+        "accel_mul":    0.68,
+        "speed_mul":    0.72,
+        "friction_mul": 1.40,
+        "fuel_mul":     0.75,
+        "grass_factor": min(0.92, GRASS_SPEED_FACTOR * 2.3),  # Offroad-King
+        "grip_mod":     2.00,   # kaum rutschig auf Eis/Öl
+        "sprite_w":     30, "sprite_h": 32,  # breit & flach
     },
 }
-
-# Standard-Klasse beim Start
-DEFAULT_CAR_CLASS = "balanced"
+CLASS_ORDER = ["balanced", "speedster", "tank"]
