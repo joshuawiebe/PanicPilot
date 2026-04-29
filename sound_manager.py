@@ -40,6 +40,13 @@ import random
 import logging
 import pygame
 
+# Optionale Import des verbesserten Engine-Sound-Systems
+try:
+    from engine_sound import create_inline_four
+    _HAS_ENGINE_SOUND = True
+except ImportError:
+    _HAS_ENGINE_SOUND = False
+
 log = logging.getLogger("SoundManager")
 
 _SAMPLE_RATE   = 44100
@@ -47,9 +54,9 @@ _CHANNELS      = 2       # Stereo
 _SAMPLE_SIZE   = -16     # Signed 16-bit
 _BUFFER        = 512
 
-# Engine-Frequenzen: 8 Drehzahl-Stufen (Hz des Grundtons)
-_ENGINE_BANDS  = 8
-_ENGINE_FREQS  = [52, 68, 88, 112, 142, 180, 225, 278]
+# Engine-Frequenzen: 8 Drehzahl-Stufen (Hz des Grundtons) - wenn keine v2 verfügbar
+_ENGINE_BANDS  = 16  # Erhöht auf 16 wenn engine_sound v2 verfügbar
+_ENGINE_FREQS  = [52, 68, 88, 112, 142, 180, 225, 278]  # Legacy fallback
 
 # Kanal-Reservierungen
 _CH_ENGINE_A   = 0
@@ -391,13 +398,17 @@ class SoundManager:
         self._current_music = ""
         self._engine_on     = False
 
-        # Engine-State
+        # Engine-State (Legacy Band-System)
         self._eng_band      = -1
         self._eng_fade_t    = 1.0
         self._eng_a_idx     = _CH_ENGINE_A
         self._eng_b_idx     = _CH_ENGINE_B
         self._eng_hold_t    = 0.0   # Hysterese-Timer
         self._eng_sounds: list[pygame.Sound] = []
+
+        # Neues Engine-Sound-System (v2)
+        self._engine_sound_v2 = None
+        self._use_engine_sound_v2 = False
 
         # SFX
         self._sfx: dict[str, pygame.Sound] = {}
@@ -411,6 +422,16 @@ class SoundManager:
             self._ok = True
             log.info("pygame.mixer initialisiert (%d Hz, %d Kanäle).",
                      _SAMPLE_RATE, pygame.mixer.get_num_channels())
+            
+            # Versuche neues Engine-Sound-System zu initialisieren
+            if _HAS_ENGINE_SOUND:
+                try:
+                    self._engine_sound_v2 = create_inline_four()
+                    self._use_engine_sound_v2 = True
+                    log.info("Engine-Sound v2 (Synthesis) aktiviert.")
+                except Exception as e:
+                    log.warning("Engine-Sound v2 Initialisierung fehlgeschlagen: %s – nutze Legacy-System.", e)
+            
             self._load_all()
         except Exception as exc:
             log.warning("Audio-Init fehlgeschlagen: %s – laufe ohne Sound.", exc)
@@ -419,9 +440,13 @@ class SoundManager:
 
     def _load_all(self) -> None:
         """Lädt oder generiert alle Sounds."""
-        # Engine-Sounds (immer generiert für konsistente Qualität)
-        for freq in _ENGINE_FREQS:
-            self._eng_sounds.append(_gen_engine_sound(freq))
+        # Engine-Sounds: Nutze v2 Synthesis wenn verfügbar
+        if self._use_engine_sound_v2 and self._engine_sound_v2:
+            self._gen_engine_sounds_v2()
+        else:
+            # Legacy: Fallback auf die alten Frequenzbänder
+            for freq in _ENGINE_FREQS:
+                self._eng_sounds.append(_gen_engine_sound(freq))
 
         # SFX: erst Datei versuchen, dann prozedural erzeugen
         self._sfx["crash"]         = self._try_load("crash.ogg",
@@ -444,6 +469,43 @@ class SoundManager:
         for snd in self._sfx.values():
             if snd:
                 snd.set_volume(self._sfx_vol)
+
+    def _gen_engine_sounds_v2(self) -> None:
+        """Generiert Motor-Sounds mit echter Synthese (engine_sound.py)."""
+        if not self._engine_sound_v2:
+            return
+        
+        log.info("Generiere Motor-Sounds mit Synthese (v2)...")
+        # Generiere 16 RPM-Stufen für spektrales Fahren
+        for i in range(16):
+            throttle = i / 15.0  # 0.0 bis 1.0
+            try:
+                # Einstelle Drosselklappe und gib RPM Zeit sich zu settelen
+                self._engine_sound_v2.set_throttle(throttle)
+                for _ in range(5):
+                    self._engine_sound_v2.update(0.016)
+                
+                # Generiere ~0.8 Sekunden Audio
+                sample_count = int(_SAMPLE_RATE * 0.8)
+                audio_bytes = self._engine_sound_v2.gen_audio(sample_count)
+                
+                # Konvertiere Mono zu Stereo
+                audio_i16 = struct.unpack(f'<{sample_count}h', audio_bytes)
+                audio_stereo = b''.join(
+                    struct.pack('<hh', val, val) for val in audio_i16
+                )
+                
+                sound = pygame.mixer.Sound(buffer=audio_stereo)
+                self._eng_sounds.append(sound)
+                log.debug(f"Engine Sound {i}: Throttle {throttle:.2%}, RPM {self._engine_sound_v2.current_rpm:.0f}")
+            except Exception as e:
+                log.warning(f"Engine Sound {i} Generation fehlgeschlagen: {e}")
+                # Fallback auf Legacy
+                self._use_engine_sound_v2 = False
+                self._eng_sounds.clear()
+                for freq in _ENGINE_FREQS:
+                    self._eng_sounds.append(_gen_engine_sound(freq))
+                return
 
     @staticmethod
     def _try_load(filename: str, fallback_fn) -> "pygame.Sound | None":
@@ -537,6 +599,17 @@ class SoundManager:
 
     def engine_start(self) -> None:
         """Motor-Sound starten (beim Rennen-Start)."""
+        if not self._ok:
+            return
+        
+        # Nutze neues System, wenn verfügbar
+        if self._use_engine_sound_v2:
+            self.engine_start_v2()
+        else:
+            self.engine_start_legacy()
+
+    def engine_start_legacy(self) -> None:
+        """Motor-Sound starten (Legacy Band-System)."""
         if not self._ok or not self._eng_sounds:
             return
         self._engine_on = True
@@ -545,11 +618,39 @@ class SoundManager:
         ch.play(self._eng_sounds[0], loops=-1)
         ch.set_volume(self._sfx_vol * 0.55)
 
+    def engine_start_v2(self) -> None:
+        """Motor-Sound starten (Neues Synthesis-System mit besseren Sounds)."""
+        if not self._ok or not self._eng_sounds:
+            return
+        self._engine_on = True
+        self._eng_band  = 0
+        ch = pygame.mixer.Channel(_CH_ENGINE_A)
+        ch.play(self._eng_sounds[0], loops=-1)
+        ch.set_volume(self._sfx_vol * 0.55)
+        log.debug("Engine v2 gestartet (Band 0)")
+
     def engine_stop(self) -> None:
         """Motor-Sound stoppen."""
         if not self._ok:
             return
+        
         self._engine_on = False
+        
+        if self._use_engine_sound_v2:
+            self.engine_stop_v2()
+        else:
+            self.engine_stop_legacy()
+
+    def engine_stop_legacy(self) -> None:
+        """Motor-Sound stoppen (Legacy)."""
+        try:
+            pygame.mixer.Channel(_CH_ENGINE_A).fadeout(300)
+            pygame.mixer.Channel(_CH_ENGINE_B).fadeout(300)
+        except Exception:
+            pass
+
+    def engine_stop_v2(self) -> None:
+        """Motor-Sound stoppen (v2) - nutze normales Fade-Out."""
         try:
             pygame.mixer.Channel(_CH_ENGINE_A).fadeout(300)
             pygame.mixer.Channel(_CH_ENGINE_B).fadeout(300)
@@ -566,14 +667,59 @@ class SoundManager:
 
         Wählt automatisch das passende Motorgeräusch und blendet sanft über.
         """
-        if not self._ok or not self._engine_on or not self._eng_sounds:
+        if not self._ok or not self._engine_on:
+            return
+        
+        self._crash_cd = max(0.0, self._crash_cd - dt)
+        
+        if self._use_engine_sound_v2:
+            self.update_engine_v2(speed, max_speed, dt)
+        else:
+            self.update_engine_legacy(speed, max_speed, dt)
+
+    def update_engine_v2(self, speed: float, max_speed: float = 500.0,
+                         dt: float = 0.016) -> None:
+        """
+        Aktualisiert Motor-Sound (mit v2 Synthese-generierte Sounds).
+        Nutzt 16 Bänder statt 8 für glattere Übergänge.
+        """
+        if not self._eng_sounds:
             return
 
-        self._crash_cd = max(0.0, self._crash_cd - dt)
         self._eng_hold_t = max(0.0, self._eng_hold_t - dt)
 
         pct  = min(1.0, max(0.0, abs(speed) / max(1.0, max_speed)))
-        # Nicht-lineares Mapping: Motor dreht schneller im unteren Drehzahlbereich
+        pct_adj = math.pow(pct, 0.65)
+        band = min(15, int(pct_adj * 16))  # 16 Bänder statt 8
+
+        if band == self._eng_band or self._eng_hold_t > 0:
+            return
+
+        # Band-Wechsel mit Crossfade
+        old_ch  = pygame.mixer.Channel(self._eng_a_idx)
+        new_ch  = pygame.mixer.Channel(self._eng_b_idx)
+        
+        if band < len(self._eng_sounds):
+            new_snd = self._eng_sounds[band]
+            new_ch.play(new_snd, loops=-1)
+            new_ch.set_volume(0.0)
+            old_ch.fadeout(120)
+            new_ch.set_volume(self._sfx_vol * 0.55)
+            self._eng_a_idx, self._eng_b_idx = self._eng_b_idx, self._eng_a_idx
+            self._eng_band   = band
+            self._eng_hold_t = self._ENGINE_HYSTERESIS
+
+    def update_engine_legacy(self, speed: float, max_speed: float = 500.0,
+                             dt: float = 0.016) -> None:
+        """
+        Aktualisiert Motor-Sound (Legacy Band-System).
+        """
+        if not self._eng_sounds:
+            return
+
+        self._eng_hold_t = max(0.0, self._eng_hold_t - dt)
+
+        pct  = min(1.0, max(0.0, abs(speed) / max(1.0, max_speed)))
         pct_adj = math.pow(pct, 0.65)
         band = min(_ENGINE_BANDS - 1, int(pct_adj * _ENGINE_BANDS))
 
@@ -588,7 +734,7 @@ class SoundManager:
         new_ch.play(new_snd, loops=-1)
         new_ch.set_volume(0.0)
 
-        # Sanfter Überblend-Schritt (wird nächste Frames angepasst)
+        # Sanfter Überblend-Schritt
         old_ch.fadeout(120)
         new_ch.set_volume(self._sfx_vol * 0.55)
 
