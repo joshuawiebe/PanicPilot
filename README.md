@@ -13,9 +13,10 @@ Future improvements may include items, buffs, or alternative control mechanics (
 This project uses pyenv to manage Python versions via :contentReference[oaicite:0]{index=0}.
 
 #### 1. Install dependencies (Arch example)
+
 ```bash
 sudo pacman -S python python-pip pyenv base-devel tk zlib bzip2 openssl readline sqlite libffi
-````
+```
 
 #### 2. Install Python version
 
@@ -103,15 +104,30 @@ python main.py
 
 ## Requirements
 
-* Python 3.11 or higher (3.12 recommended)
-* pygame
-* numpy (for audio processing)
+- Python 3.11 or higher (3.12 recommended)
+- pygame
+- numpy (for audio processing)
 
 ---
 
 ## Notes
 
-* On Linux, pyenv is used to manage Python versions
-* Always create the virtual environment after selecting the correct Python version
-* If pygame errors occur, it is usually caused by a Python version mismatch, not the code
+- On Linux, pyenv is used to manage Python versions
+- Always create the virtual environment after selecting the correct Python version
+- If pygame errors occur, it is usually caused by a Python version mismatch, not the code
 
+### TODOs:
+
+- [ ] Add a history of previously connected IPs along with custom usernames, and display them in the UI.
+- [ ] Fix copy & paste functionality for IP addresses.
+- [ ] Implement engine (motor) sound.
+- [ ] Add ping visualization in fog (Mode 2 → PanicPilot).
+- [ ] Improve fullscreen mode and ensure a clean layout of UI elements.
+- [ ] Upload Ben's documentation.
+- [ ] Fix connection issues, add a clear "connected" status, and allow smooth mode switching while connected and playing. Mode switching should require confirmation from the other player.
+- [ ] When the host kicks the client, the client should return to the main menu instead of needing to restart the game (ESC currently not working).
+- [ ] Translate everything into English (UI, descriptions, logs, etc.) and ensure consistency across the project.
+
+### Currently Working on:
+
+- Engine (motor) sound
