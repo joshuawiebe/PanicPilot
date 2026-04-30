@@ -127,6 +127,7 @@ python main.py
 - [ ] Fix connection issues, add a clear "connected" status, and allow smooth mode switching while connected and playing. Mode switching should require confirmation from the other player.
 - [ ] When the host kicks the client, the client should return to the main menu instead of needing to restart the game (ESC currently not working).
 - [ ] Translate everything into English (UI, descriptions, logs, etc.) and ensure consistency across the project.
+- [ ] An Github Action Automation to make an Release with an executable of this project to run it directly.
 
 ### Currently Working on:
 

@@ -214,6 +214,47 @@ class TextInput:
         self._ph_font = pygame.font.SysFont("Arial",   17)
         self._err_f   = pygame.font.SysFont("Arial",   14)
 
+    @staticmethod
+    def _get_clipboard() -> str:
+        """Get clipboard content (cross-platform attempt)."""
+        import subprocess
+        import sys
+        try:
+            if sys.platform == "win32":
+                return subprocess.check_output(["powershell", "-Command", "Get-Clipboard"], 
+                                               text=True, timeout=1).strip()
+            elif sys.platform == "darwin":  # macOS
+                return subprocess.check_output(["pbpaste"], text=True, timeout=1).strip()
+            else:  # Linux
+                try:
+                    return subprocess.check_output(["xclip", "-selection", "clipboard", "-o"], 
+                                                   text=True, timeout=1).strip()
+                except FileNotFoundError:
+                    return subprocess.check_output(["xsel", "-b"], 
+                                                   text=True, timeout=1).strip()
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+            return ""
+
+    @staticmethod
+    def _set_clipboard(text: str) -> None:
+        """Set clipboard content (cross-platform attempt)."""
+        import subprocess
+        import sys
+        try:
+            if sys.platform == "win32":
+                subprocess.run(["powershell", "-Command", f"Set-Clipboard -Value '{text.replace(chr(39), chr(39)+chr(39))}'"], 
+                              timeout=1, check=False)
+            elif sys.platform == "darwin":  # macOS
+                subprocess.run(["pbcopy"], input=text.encode(), timeout=1, check=False)
+            else:  # Linux
+                try:
+                    subprocess.run(["xclip", "-selection", "clipboard"], 
+                                  input=text.encode(), timeout=1, check=False)
+                except FileNotFoundError:
+                    subprocess.run(["xsel", "-b"], input=text.encode(), timeout=1, check=False)
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+
     def draw(self, surface: pygame.Surface) -> None:
         border = (C_ERROR if self.error else
                   (ACCENT if self.active else C_INPUT_BORD))
@@ -239,7 +280,22 @@ class TextInput:
         if event.type == pygame.MOUSEBUTTONDOWN:
             self.active = self.rect.collidepoint(event.pos)
         elif event.type == pygame.KEYDOWN and self.active:
-            if event.key == pygame.K_BACKSPACE:
+            # Phase 12.1: Copy/Paste support (CTRL+C / CTRL+V)
+            if event.key == pygame.K_c and (event.mod & pygame.KMOD_CTRL or event.mod & pygame.KMOD_CMD):
+                # Copy current text
+                self._set_clipboard(self.text)
+            elif event.key == pygame.K_v and (event.mod & pygame.KMOD_CTRL or event.mod & pygame.KMOD_CMD):
+                # Paste from clipboard
+                clipboard = self._get_clipboard()
+                # Filter: only keep valid IP characters (0-9, .)
+                filtered = "".join(c for c in clipboard if c in "0123456789.")
+                available = 15 - len(self.text)
+                self.text += filtered[:available]
+                self.error = ""
+            elif event.key == pygame.K_a and (event.mod & pygame.KMOD_CTRL or event.mod & pygame.KMOD_CMD):
+                # Select all (mark but don't implement special visual, just usage)
+                pass
+            elif event.key == pygame.K_BACKSPACE:
                 self.text = self.text[:-1]
                 self.error = ""
             elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
@@ -543,13 +599,31 @@ class ClientSetupMenu:
     def __init__(self, screen: pygame.Surface) -> None:
         self.screen = screen;  self._t = 0.0
         cx = SCREEN_W // 2
+        
+        # Phase 12.1: Connection history + room discovery
+        from connection_history import ConnectionHistory
+        from discovery import RoomListener
+        
+        self._history = ConnectionHistory()
+        self._listener = RoomListener()
+        self._discovered_rooms: list[dict] = []
+        self._listener.start_discovery(timeout=3.0)  # Start finding rooms
+        self._last_room_update = 0.0
+        
         self._title_f = pygame.font.SysFont("Arial", 38, bold=True)
         self._lbl     = pygame.font.SysFont("Arial", 19)
-        self._hint    = pygame.font.SysFont("Arial", 15)
-        self._input   = TextInput(cx, SCREEN_H//2 - 16, "z.B. 192.168.1.42")
+        self._hint    = pygame.font.SysFont("Arial", 13)
+        self._small_f = pygame.font.SysFont("Arial", 14)
+        
+        self._input   = TextInput(cx, SCREEN_H//2 + 20, "z.B. 192.168.1.42")
         self._input.active = True
-        self._btn_connect = Button(cx, SCREEN_H//2 + 84,  "  VERBINDEN  ", accent=ACCENT)
-        self._btn_back    = Button(cx, SCREEN_H//2 + 154, "  Zurück  ", w=180, h=44)
+        
+        self._btn_connect = Button(cx, SCREEN_H//2 + 110, "  VERBINDEN  ", accent=ACCENT)
+        self._btn_back    = Button(cx, SCREEN_H//2 + 170, "  Zurück  ", w=180, h=44)
+        
+        # Recent connections and discovered rooms will be drawn as buttons
+        self._recent_rects: list[tuple[pygame.Rect, str]] = []  # (rect, ip)
+        self._discovered_rects: list[tuple[pygame.Rect, str]] = []  # (rect, ip)
 
     def _try_connect(self) -> str | None:
         """Validiert IP und gibt sie zurück oder setzt Fehler und gibt None zurück."""
@@ -557,13 +631,27 @@ class ClientSetupMenu:
         if not _validate_ip(ip):
             self._input.error = "Ungültige IP-Adresse (z.B. 192.168.1.42)"
             return None
+        # Phase 12.1: Mark as successful in history
+        self._history.add_or_update(ip, "Host", success=True)
         return ip
+    
+    def _update_discovered_rooms(self) -> None:
+        """Update list of discovered rooms from listener."""
+        if not self._listener.is_listening():
+            self._discovered_rooms = self._listener.get_rooms()
 
     def run(self) -> str | None:
         clock = pygame.time.Clock()
         while True:
             dt = clock.tick(60) / 1000.0;  self._t += dt
             mouse = pygame.mouse.get_pos()
+            
+            # Periodically check for discovered rooms
+            self._last_room_update += dt
+            if self._last_room_update > 0.5:
+                self._update_discovered_rooms()
+                self._last_room_update = 0.0
+            
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:         return None
                 if event.type == pygame.KEYDOWN:
@@ -571,22 +659,108 @@ class ClientSetupMenu:
                     if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                         ip = self._try_connect()
                         if ip: return ip
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    # Check recent connections
+                    for rect, ip in self._recent_rects:
+                        if rect.collidepoint(event.pos):
+                            self._input.text = ip
+                            self._input.error = ""
+                    # Check discovered rooms
+                    for rect, ip in self._discovered_rects:
+                        if rect.collidepoint(event.pos):
+                            self._input.text = ip
+                            self._input.error = ""
+                
                 self._input.handle_event(event)
                 if self._btn_connect.is_clicked(event):
                     ip = self._try_connect()
                     if ip: return ip
                 if self._btn_back.is_clicked(event):  return None
+            
             self.screen.fill(MENU_BG);  _draw_bg(self.screen, self._t)
             _draw_title(self.screen, "CLIENT VERBINDEN", 76, self._title_f)
+            
+            # Draw history and discovered rooms above input field
+            self._draw_connection_options(mouse)
+            
             lbl = self._lbl.render("Host-IP-Adresse eingeben:", True, C_LABEL)
-            self.screen.blit(lbl, ((SCREEN_W - lbl.get_width()) // 2, SCREEN_H//2 - 68))
+            self.screen.blit(lbl, ((SCREEN_W - lbl.get_width()) // 2, SCREEN_H//2 - 48))
             self._input.draw(self.screen)
             h = self._hint.render(
-                "Die IP des Hosts steht im Fenster-Titel des Hosts.", True, C_LABEL)
-            self.screen.blit(h, ((SCREEN_W - h.get_width()) // 2, SCREEN_H//2 + 38))
+                "Die IP des Hosts steht im Fenster-Titel des Hosts | CTRL+V zum Einfügen", 
+                True, C_LABEL)
+            self.screen.blit(h, ((SCREEN_W - h.get_width()) // 2, SCREEN_H//2 + 58))
+            
             self._btn_connect.draw(self.screen, mouse)
             self._btn_back.draw(self.screen, mouse)
             pygame.display.flip()
+    
+    def _draw_connection_options(self, mouse: tuple) -> None:
+        """Draw recent connections and discovered rooms as clickable options."""
+        self._recent_rects.clear()
+        self._discovered_rects.clear()
+        
+        cx = SCREEN_W // 2
+        y = 100
+        
+        # Draw recent connections
+        recent = self._history.get_recent(limit=3)
+        if recent:
+            y_label = y
+            lbl = self._lbl.render("Letzte Verbindungen:", True, ACCENT)
+            self.screen.blit(lbl, (cx - lbl.get_width() // 2, y_label))
+            y += 28
+            
+            for conn in recent:
+                ip = conn["ip"]
+                username = conn.get("username", ip)
+                
+                # Draw as small button
+                rect = pygame.Rect(cx - 160, y, 320, 32)
+                hovered = rect.collidepoint(mouse)
+                
+                bg = (40, 60, 100) if hovered else (20, 32, 60)
+                border = ACCENT if hovered else (50, 80, 140)
+                
+                pygame.draw.rect(self.screen, bg, rect, border_radius=6)
+                pygame.draw.rect(self.screen, border, rect, 1, border_radius=6)
+                
+                text = self._small_f.render(f"🌐 {username} ({ip})", True, 
+                                           ACCENT if hovered else C_LABEL)
+                self.screen.blit(text, (rect.x + 12, rect.centery - text.get_height() // 2))
+                
+                self._recent_rects.append((rect, ip))
+                y += 36
+        
+        y += 8
+        
+        # Draw discovered rooms
+        if self._discovered_rooms:
+            y_label = y
+            lbl = self._lbl.render("Gefundene Räume:", True, ACCENT2)
+            self.screen.blit(lbl, (cx - lbl.get_width() // 2, y_label))
+            y += 28
+            
+            for room in self._discovered_rooms[:3]:  # Show max 3
+                ip = room["ip"]
+                room_name = room.get("room_name", "Unknown Room")
+                
+                # Draw as small button
+                rect = pygame.Rect(cx - 160, y, 320, 32)
+                hovered = rect.collidepoint(mouse)
+                
+                bg = (60, 80, 40) if hovered else (30, 40, 20)
+                border = ACCENT2 if hovered else (80, 120, 60)
+                
+                pygame.draw.rect(self.screen, bg, rect, border_radius=6)
+                pygame.draw.rect(self.screen, border, rect, 1, border_radius=6)
+                
+                text = self._small_f.render(f"🎮 {room_name} ({ip})", True, 
+                                           ACCENT2 if hovered else C_LABEL)
+                self.screen.blit(text, (rect.x + 12, rect.centery - text.get_height() // 2))
+                
+                self._discovered_rects.append((rect, ip))
+                y += 36
 
 
 # ── HOST LOBBY ────────────────────────────────────────────────────────────────
@@ -620,6 +794,20 @@ class HostLobby:
             self._net      = HostConnection(self.NET_PORT)
             self._net.start()
             self._owns_net = True
+
+        # Phase 12.1: Start room discovery broadcaster
+        from discovery import RoomBroadcaster
+        import socket
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("8.8.8.8", 80))
+                own_ip = s.getsockname()[0]
+        except OSError:
+            own_ip = "localhost"
+        
+        room_name = f"Host ({own_ip})"
+        self._broadcaster = RoomBroadcaster(room_name, tcp_port=self.NET_PORT)
+        self._broadcaster.start()
 
         cx = SCREEN_W // 2
         self._title_f  = pygame.font.SysFont("Arial", 38, bold=True)
@@ -788,6 +976,9 @@ class HostLobby:
         pygame.display.flip()
 
     def _close(self) -> None:
+        # Phase 12.1: Stop room discovery broadcaster
+        if hasattr(self, "_broadcaster"):
+            self._broadcaster.stop()
         if self._owns_net:
             self._net.shutdown()
 
