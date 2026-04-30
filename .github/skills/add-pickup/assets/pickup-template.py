@@ -1,10 +1,23 @@
-# Pickup Template
-
-Copy this template and customize for your new pickup:
-
-```python
 # =============================================================================
 #  [YOUR_PICKUP_NAME]  –  Panic Pilot | Pickup (Phase X.Y)
+# =============================================================================
+#
+# CUSTOMIZATION GUIDE:
+#   1. Replace "YourPickupName" with your class name (same in all 3 places)
+#   2. Update RADIUS & RESPAWN_TIME for collision/respawn behavior
+#   3. Add custom attributes in __init__() (e.g., self.duration = 3.0)
+#   4. Implement update() with animation/effect logic if needed
+#   5. Modify try_pickup() for special collection conditions
+#   6. Customize _draw_active() for visual appearance (color, rotation, etc.)
+#   7. Extend to_net_dict() / apply_net_dict() if adding custom state
+#
+# INTEGRATION STEPS (in game.py):
+#   1. Import: from entities import YourPickupName
+#   2. Create: self.entities.append(YourPickupName(x, y, pickup_id=0))
+#   3. Set PvP mode: entity.set_pvp_mode(self.mode == 3)
+#   4. Handle: if entity.try_pickup(car.x, car.y, player_id):
+#              <apply effect>
+#
 # =============================================================================
 from __future__ import annotations
 import math
@@ -26,7 +39,7 @@ class YourPickupName:
     
     RADIUS = 20                # Collision radius (pixels)
     RESPAWN_TIME = 12.0        # Seconds before respawning
-    YOR_PICKUP_CONSTANT = 1.0  # Add custom constants here
+    YOUR_PICKUP_CONSTANT = 1.0  # Add custom constants here
     
     def __init__(self, x: float, y: float, pickup_id: int = 0) -> None:
         self.x = x
@@ -104,9 +117,8 @@ class YourPickupName:
     
     def _draw_active(self, surface: pygame.Surface, sx: int, sy: int, r: int) -> None:
         """Draw active pickup at full brightness."""
-        # Example: rotating square
-        angle = (self._time * 180) % 360
-        pygame.draw.circle(surface, BRIGHT_BLUE, (sx, sy), r)
+        # Example: circle with outline (customize colors as needed)
+        pygame.draw.circle(surface, LIGHT_BLUE, (sx, sy), r)
         pygame.draw.circle(surface, WHITE, (sx, sy), r, 2)
     
     def _draw_faded(self, surface: pygame.Surface, sx: int, sy: int, r: int) -> None:
@@ -139,27 +151,3 @@ class YourPickupName:
         self.active = bool(data.get("active", True))
         self._respawn_timer = float(data.get("timer", 0.0))
         self.collected_by = set(data.get("cby", []))
-```
-
-## Customization Points
-
-Replace or modify these sections:
-
-1. **RADIUS & RESPAWN_TIME**: Adjust collision and respawn behavior
-2. **__init__()**: Add custom attributes (e.g., `self.duration = 3.0`)
-3. **update()**: Add animation logic or effect tracking
-4. **try_pickup()**: Add special collection conditions if needed
-5. **_draw_active()**: Customize visual appearance (color, rotation, etc.)
-6. **to_net_dict() / apply_net_dict()**: Add custom state if needed
-
-## Integration Checklist
-
-After copying and customizing:
-
-1. Add to `entities.py` imports in `game.py`
-2. Create instances in `Game._init_game_objects()`
-3. Call `entity.set_pvp_mode()` for all entities
-4. Add collision detection in `Game.update()` with `entity.try_pickup()`
-5. Implement effect handler (if active effect)
-6. Test in Solo and PvP modes
-7. Verify networking sync
