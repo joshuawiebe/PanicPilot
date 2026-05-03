@@ -24,6 +24,7 @@
 # =============================================================================
 from __future__ import annotations
 import math
+import os
 import time
 import pygame
 
@@ -1483,6 +1484,8 @@ class SettingsScene:
 # ── Einstiegspunkt ────────────────────────────────────────────────────────────
 
 def main() -> None:
+    # Linear filtering makes pygame.SCALED upscaling smooth at any screen size
+    os.environ.setdefault("SDL_RENDER_SCALE_QUALITY", "linear")
     pygame.init()
     # pygame.SCALED keeps the 1280×720 logical surface and stretches it to
     # fill the actual window/screen — fixes the "small window in fullscreen" bug.
