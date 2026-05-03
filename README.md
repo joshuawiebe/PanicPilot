@@ -118,8 +118,8 @@ python main.py
 
 ### TODOs:
 
-- [ ] Add a history of previously connected IPs along with custom usernames, and display them in the UI along with automated udp stream finding of open rooms (ex. "Simon's Room").
-- [ ] Fix copy & paste functionality for IP addresses.
+- [x] Add a history of previously connected IPs along with custom usernames, and display them in the UI along with automated udp stream finding of open rooms (ex. "Simon's Room"). **✅ DONE (Phase 12.1)**
+- [x] Fix copy & paste functionality for IP addresses. **✅ DONE (Phase 12.1 - Cross-platform: Windows/macOS/Linux)**
 - [ ] Implement engine (motor) sound.
 - [ ] Add ping visualization in fog (Mode 2 → PanicPilot).
 - [ ] Improve fullscreen mode and ensure a clean layout of UI elements.
@@ -131,4 +131,4 @@ python main.py
 
 ### Currently Working on:
 
-- Engine (motor) sound
+- Engine (motor) sound (Task 3)

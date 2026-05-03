@@ -6,6 +6,7 @@ SCREEN_W  = 1280
 SCREEN_H  = 720
 FPS       = 60
 TITLE     = "Panic Pilot"
+FULLSCREEN = False  # Phase 12.2: Fullscreen support
 
 BLACK       = (  0,   0,   0)
 WHITE       = (255, 255, 255)

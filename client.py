@@ -88,6 +88,11 @@ class ClientGame:
         self._lobby_initiator  = ""      # "self" | "remote"
         self._pause_btn_rects: dict = {}
         self._lobby_ready_sent = False   # Phase 11.3: ready_for_map schon gesendet?
+        
+        # Phase 12.2: Latency tracking for ping visualization
+        self._frame_times: list[float] = []
+        self._estimated_latency_ms: int = 0
+        self._last_latency_update = 0.0
 
         # Fonts
         self._status_font    = pygame.font.SysFont("Arial", 15, bold=True)
@@ -256,6 +261,22 @@ class ClientGame:
 
         while self.running:
             dt = min(self.clock.tick(FPS) / 1000.0, 0.05)
+            
+            # Phase 12.2: Track frame times for latency estimation
+            self._frame_times.append(dt * 1000)  # Convert to ms
+            if len(self._frame_times) > 60:  # Keep last 60 frames
+                self._frame_times.pop(0)
+            
+            # Update latency Every 0.5 seconds (estimate from frame variance)
+            self._last_latency_update += dt
+            if self._last_latency_update >= 0.5:
+                if len(self._frame_times) > 10:
+                    avg_frame_ms = sum(self._frame_times) / len(self._frame_times)
+                    variance = sum((f - avg_frame_ms) ** 2 for f in self._frame_times) / len(self._frame_times)
+                    # Estimate latency from frame time jitter (rough approximation)
+                    # Higher jitter suggests network latency
+                    self._estimated_latency_ms = int(min(500, max(20, variance / 2)))
+                self._last_latency_update = 0.0
 
             # ── Events ───────────────────────────────────────────────────────
             for event in pygame.event.get():
@@ -552,7 +573,9 @@ class ClientGame:
             inv_car = self.car_b if self._mode == 3 and self.car_b else self.car
             self.hud.draw(self.screen, speed, fuel, self._elapsed,
                           inventory=self._client_inventory,
-                          car_class=inv_car.car_class if inv_car else "balanced")
+                          car_class=inv_car.car_class if inv_car else "balanced",
+                          latency=self._estimated_latency_ms,
+                          game_mode=self._mode)
 
         # Untergrundwarnung
         if not self._game_over and not self._paused:

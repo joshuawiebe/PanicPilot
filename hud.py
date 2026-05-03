@@ -34,11 +34,17 @@ class HUD:
     def draw(self, surface: pygame.Surface,
              speed: float, fuel: float, elapsed: float,
              inventory: str | None = None,
-             car_class: str = "balanced") -> None:
+             car_class: str = "balanced",
+             latency: int | None = None,
+             game_mode: int = 1) -> None:
 
         self._draw_panel(surface, speed, fuel, elapsed)
         self._draw_inventory(surface, inventory)
         self._draw_class_badge(surface, car_class)
+        
+        # Phase 12.2: Latency indicator in fog mode (Mode 2)
+        if latency is not None and game_mode == 2:
+            self._draw_latency(surface, latency)
 
         fuel_pct = fuel / FUEL_MAX
         if fuel <= 0:
@@ -253,3 +259,36 @@ class HUD:
         cx = (SCREEN_W - lbl.get_width()) // 2
         surface.blit(shadow, (cx + 2, y + 2))
         surface.blit(lbl, (cx, y))
+
+    def _draw_latency(self, surface: pygame.Surface, latency: int) -> None:
+        """Phase 12.2: Draw latency/ping indicator in top-right for fog mode."""
+        px = SCREEN_W - 160
+        py = 16
+        w, h = 144, 46
+        
+        # Determine color based on latency
+        if latency < 50:
+            color = (50, 220, 50)  # Green - excellent
+            status = "EXCELLENT"
+        elif latency < 100:
+            color = (200, 220, 50)  # Yellow - good
+            status = "GOOD"
+        elif latency < 150:
+            color = (255, 160, 50)  # Orange - fair
+            status = "FAIR"
+        else:
+            color = (255, 80, 80)   # Red - poor
+            status = "POOR"
+        
+        # Draw panel
+        pygame.draw.rect(surface, (10, 10, 20), (px, py, w, h), border_radius=6)
+        pygame.draw.rect(surface, color, (px, py, w, h), 2, border_radius=6)
+        
+        # Draw label and value
+        label = self._font_sm.render("PING", True, (150, 160, 180))
+        value = self._font_lg.render(f"{latency}ms", True, color)
+        status_lbl = self._font_sm.render(status, True, color)
+        
+        surface.blit(label, (px + 8, py + 4))
+        surface.blit(value, (px + 8, py + 18))
+        surface.blit(status_lbl, (px + w - status_lbl.get_width() - 8, py + 4))

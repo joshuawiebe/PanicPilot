@@ -59,9 +59,9 @@ CLASS_COLORS = {
 }
 CLASS_ICONS = {"balanced": "◈", "speedster": "▶▶", "tank": "⬡"}
 CLASS_DESCRIPTIONS = {
-    "balanced":  "Ausgewogen  –  Gute Haftung, normales Tempo",
-    "speedster": "Rasant  –  Hohes Tempo, rutschig & durstiger",
-    "tank":      "Panzer  –  Langsam aber robust, Offroad-König",
+    "balanced":  "Balanced  –  Good grip, normal speed",
+    "speedster": "Speedy  –  High speed, slippery & thirsty",
+    "tank":      "Tank  –  Slow but sturdy, off-road king",
 }
 
 
@@ -428,13 +428,13 @@ class MainMenu:
         y0 = SCREEN_H // 2 - 96
         self._title_f = pygame.font.SysFont("Arial", 76, bold=True)
         self._sub_f   = pygame.font.SysFont("Arial", 19)
-        self._btn_host     = Button(cx, y0,                       "  HOST STARTEN  ",    accent=ACCENT2)
-        self._btn_solo     = Button(cx, y0 +   BTN_H + BTN_GAP,   "  SOLO SPIELEN  ",    accent=GREEN)
-        self._btn_client   = Button(cx, y0 + 2*(BTN_H+BTN_GAP),   "  CLIENT VERBINDEN  ")
-        self._btn_settings = Button(cx, y0 + 3*(BTN_H+BTN_GAP),   "  ♪  EINSTELLUNGEN  ",
+        self._btn_host     = Button(cx, y0,                       "  START HOST  ",    accent=ACCENT2)
+        self._btn_solo     = Button(cx, y0 +   BTN_H + BTN_GAP,   "  SOLO PLAY  ",    accent=GREEN)
+        self._btn_client   = Button(cx, y0 + 2*(BTN_H+BTN_GAP),   "  CONNECT CLIENT  ")
+        self._btn_settings = Button(cx, y0 + 3*(BTN_H+BTN_GAP),   "  ♪  SETTINGS  ",
                                     w=BTN_W, h=46, accent=(0, 180, 180))
         self._btn_quit     = Button(cx, y0 + 3*(BTN_H+BTN_GAP) + 62,
-                                    "  BEENDEN  ", w=200, h=46, accent=(160, 40, 40))
+                                    "  EXIT  ", w=200, h=46, accent=(160, 40, 40))
 
     def run(self) -> str:
         clock = pygame.time.Clock()
@@ -454,7 +454,7 @@ class MainMenu:
             pygame.draw.line(self.screen, ACCENT,
                              (SCREEN_W//2 - 200, 168), (SCREEN_W//2 + 200, 168), 1)
             _draw_title(self.screen, "PANIC PILOT", 86, self._title_f, ACCENT2)
-            sub = self._sub_f.render("Asymmetrisches Koop-Rennspiel", True, C_LABEL)
+            sub = self._sub_f.render("Asymmetric Co-op Racing Game", True, C_LABEL)
             self.screen.blit(sub, ((SCREEN_W - sub.get_width()) // 2, 186))
             for btn in (self._btn_host, self._btn_solo,
                         self._btn_client, self._btn_settings, self._btn_quit):
@@ -465,21 +465,21 @@ class MainMenu:
 # ── Solo Klassen-Auswahl ──────────────────────────────────────────────────────
 
 class SoloClassPicker:
-    """Phase 11.1: pvp_mode=False, kein Coop-Info (kein Client im Solo)."""
-    SPEED_OPTIONS = [("🐢  Langsam", 0.70), ("🏎  Normal", 1.00), ("⚡  Schnell", 1.40)]
+    """Phase 11.1: pvp_mode=False, no coop info (no client in solo)."""
+    SPEED_OPTIONS = [("🐢  Slow", 0.70), ("🏎  Normal", 1.00), ("⚡  Fast", 1.40)]
 
     def __init__(self, screen: pygame.Surface) -> None:
         self.screen = screen;  self._t = 0.0
         cx = SCREEN_W // 2
         self._title_f = pygame.font.SysFont("Arial", 38, bold=True)
-        # Solo → kein PvP, kein Coop-Info
+        # Solo → no PvP, no coop info
         self._picker  = ClassPicker(cx, SCREEN_H // 2 - 50, pvp_mode=False)
-        self._slider  = Slider(cx, SCREEN_H // 2 + 108, "Streckenlänge", 10, 50, 15)
+        self._slider  = Slider(cx, SCREEN_H // 2 + 108, "Track Length", 10, 50, 15)
         self._speed_idx = 1
         y0 = SCREEN_H // 2 + 176
-        self._btn_speed = Button(cx, y0,       "Tempo",          w=280, h=46)
-        self._btn_start = Button(cx, y0 + 62,  "  SOLO STARTEN  ", accent=GREEN)
-        self._btn_back  = Button(cx, y0 + 124, "  Zurück  ",     w=180, h=44)
+        self._btn_speed = Button(cx, y0,       "Speed",          w=280, h=46)
+        self._btn_start = Button(cx, y0 + 62,  "  START SOLO  ", accent=GREEN)
+        self._btn_back  = Button(cx, y0 + 124, "  Back  ",     w=180, h=44)
 
     def run(self) -> tuple[str, int, float] | None:
         clock = pygame.time.Clock()
@@ -1098,9 +1098,18 @@ class ClientLobby:
                 pygame.time.wait(2000); return
 
             if self._net.was_kicked():
-                self._draw_status("Du wurdest vom Host gekickt.", ORANGE)
-                pygame.time.wait(2000)
-                self._net.shutdown(); return
+                # Phase 12.2: Kick handling - interruptible with ESC
+                kick_start = pygame.time.get_ticks()
+                kick_duration = 2000  # 2 seconds
+                while pygame.time.get_ticks() - kick_start < kick_duration:
+                    for event in pygame.event.get():
+                        if event.type == pygame.QUIT:
+                            self._leave(); return
+                        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                            self._leave(); return
+                    self._draw_status("Du wurdest vom Host gekickt.", ORANGE)
+                    pygame.time.wait(100)
+                self._leave(); return
 
             # Phase 11.1: im ersten Frame nochmal lobby anfordern
             # (request_lobby_state wurde schon in connect() gesendet,
@@ -1423,7 +1432,9 @@ class SettingsScene:
 
 def main() -> None:
     pygame.init()
-    screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+    # Phase 12.2: Fullscreen support
+    flags = pygame.FULLSCREEN if FULLSCREEN else 0
+    screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), flags)
     pygame.display.set_caption("Panic Pilot")
 
     # ── Phase 12: Audio-System initialisieren ─────────────────────────────────
