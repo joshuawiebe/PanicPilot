@@ -166,35 +166,53 @@ class EngineSound:
         self._between_sound = [0.0] * int(0.05 * _SAMPLE_RATE)  # 50ms Stille
 
     def _create_fire_sound(self) -> list[float]:
-        """Erstellt einen einzelnen Zündsound (Explosion + Auslaufen)."""
-        # Sine-Welle bei 160 Hz für ~100ms
-        fire_tone = _sine_wave(160, 0.1, amp=0.9)
-        # Exponentielles Auslaufen (Motor wird leiser)
-        fire_sound = _exponential_decay(fire_tone, base=3.0)
-        return fire_sound
+        """Creates a single cylinder firing sound (short combustion pop)."""
+        duration = 0.025  # 25ms — short pop, not a long tone
+        n = int(_SAMPLE_RATE * duration)
+        result = []
+        for i in range(n):
+            t = i / _SAMPLE_RATE
+            # Fundamental + 2nd harmonic for a richer combustion sound
+            val = (0.7 * math.sin(2 * math.pi * 180 * t) +
+                   0.3 * math.sin(2 * math.pi * 360 * t))
+            # Sharp attack, fast decay
+            decay = math.exp(-t * 80.0)
+            result.append(val * decay)
+        return result
 
     def _gen_one_cycle_audio(self, cycle_duration: float) -> list[float]:
         """
-        Erzeugt das Audio für einen Motor-Zyklus.
-        Überlaget alle Zündungen zeitlich verschoben.
+        Generates audio for one engine cycle.
+        Overlays all cylinder firings at their correct timing offsets.
         """
         cycle_samples = int(_SAMPLE_RATE * cycle_duration)
+        if cycle_samples < 1:
+            return []
         cycle_audio = [0.0] * cycle_samples
-        
-        # Berechne Sample-Position für jede Zündung
-        total_degrees = 720.0  # Ein vollständiger 4-Takt-Zyklus ist 720°
-        degree_per_sample = total_degrees / cycle_samples
-        
-        for cyl_idx, timing_offset in enumerate(self.timing):
-            # Position in Samples für diese Zündung
-            fire_sample = int(timing_offset / degree_per_sample)
-            
-            # Zündsound am richtigen Zeitpunkt einfügen
-            for i, val in enumerate(self._fire_sound):
-                if fire_sample + i < cycle_samples:
-                    cycle_audio[fire_sample + i] += val * 0.9 / len(self.timing)
-        
-        # Normalisieren
+
+        # Convert delta timing_offsets to absolute degree positions
+        abs_positions = []
+        pos = 0.0
+        for offset in self.timing:
+            abs_positions.append(pos)
+            pos += offset
+
+        total_degrees = 720.0  # Full 4-stroke cycle
+        samples_per_degree = cycle_samples / total_degrees
+
+        # Fire sound should be at most 1/cylinders of cycle length to avoid
+        # overlapping across the full cycle
+        max_fire_samples = max(1, cycle_samples // max(1, len(self.timing)))
+        fire = self._fire_sound[:max_fire_samples]
+
+        for abs_deg in abs_positions:
+            fire_sample = int(abs_deg * samples_per_degree)
+            scale = 0.9 / len(self.timing)
+            for i, val in enumerate(fire):
+                idx = fire_sample + i
+                if idx < cycle_samples:
+                    cycle_audio[idx] += val * scale
+
         return _normalize_audio(cycle_audio)
 
     def set_throttle(self, throttle: float) -> None:
@@ -222,13 +240,13 @@ class EngineSound:
         Generiert Audio-Daten für pygame.mixer.
         Gibt Audio als 16-Bit Integer bytes zurück.
         """
-        # Sicherstelle RPM ist nicht 0
+        # RPM guard
         rpm = max(self.idle_rpm, self.current_rpm)
-        
-        # Wenn Puffer zu leer, generiere neuen Zyklus
+
+        # Refill buffer when running low
         if len(self._audio_buffer) < num_samples:
-            # Berechne Zyklus-Dauer basierend auf RPM
-            cycle_duration = (720.0 / rpm) * (60.0 / 1.0)
+            # Correct formula: one 4-stroke cycle = 2 crankshaft revolutions
+            cycle_duration = 2.0 * 60.0 / rpm
             cycle = self._gen_one_cycle_audio(cycle_duration)
             
             # Konvertiere zu Liste wenn numpy array

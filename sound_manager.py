@@ -428,7 +428,7 @@ class SoundManager:
                 try:
                     self._engine_sound_v2 = create_inline_four()
                     self._use_engine_sound_v2 = True
-                    log.info("Engine-Sound v2 (Synthesis) aktiviert.")
+                    log.info("Engine sound v2 (synthesis) enabled.")
                 except Exception as e:
                     log.warning("Engine sound v2 initialization failed: %s – falling back to legacy system.", e)
             
@@ -475,7 +475,7 @@ class SoundManager:
         if not self._engine_sound_v2:
             return
         
-        log.info("Generiere Motor-Sounds mit Synthese (v2)...")
+        log.info("Generating engine sounds via synthesis (v2)...")
         # Generiere 16 RPM-Stufen für spektrales Fahren
         for i in range(16):
             throttle = i / 15.0  # 0.0 bis 1.0
