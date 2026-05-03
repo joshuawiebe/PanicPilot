@@ -191,11 +191,13 @@ class EngineSound:
         cycle_audio = [0.0] * cycle_samples
 
         # Convert delta timing_offsets to absolute degree positions
+        # Each offset is the angular delta FROM the previous firing.
+        # Example: [0, 180, 180, 180] → fires at 0°, 180°, 360°, 540°
         abs_positions = []
         pos = 0.0
         for offset in self.timing:
-            abs_positions.append(pos)
             pos += offset
+            abs_positions.append(pos)
 
         total_degrees = 720.0  # Full 4-stroke cycle
         samples_per_degree = cycle_samples / total_degrees
@@ -243,22 +245,12 @@ class EngineSound:
         # RPM guard
         rpm = max(self.idle_rpm, self.current_rpm)
 
-        # Refill buffer when running low
-        if len(self._audio_buffer) < num_samples:
-            # Correct formula: one 4-stroke cycle = 2 crankshaft revolutions
-            cycle_duration = 2.0 * 60.0 / rpm
+        # Refill buffer with complete cycles until we have enough samples.
+        # Using a while loop ensures no silence padding for long requests.
+        cycle_duration = 2.0 * 60.0 / rpm
+        while len(self._audio_buffer) < num_samples:
             cycle = self._gen_one_cycle_audio(cycle_duration)
-            
-            # Konvertiere zu Liste wenn numpy array
-            if _HAS_NP and isinstance(cycle, np.ndarray):
-                cycle = cycle.tolist()
-            
-            # Extend Puffer
-            if isinstance(self._audio_buffer, list):
-                self._audio_buffer.extend(cycle)
-            else:  # numpy array
-                cycle_arr = np.array(cycle, dtype=np.int16)
-                self._audio_buffer = np.concatenate([self._audio_buffer, cycle_arr])
+            self._audio_buffer.extend(cycle)
         
         # Extrahiere gewünschte Menge
         if isinstance(self._audio_buffer, list):

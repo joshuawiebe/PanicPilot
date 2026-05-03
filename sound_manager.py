@@ -480,13 +480,16 @@ class SoundManager:
         for i in range(16):
             throttle = i / 15.0  # 0.0 bis 1.0
             try:
-                # Einstelle Drosselklappe und gib RPM Zeit sich zu settelen
+                # Set throttle and let RPM settle
                 self._engine_sound_v2.set_throttle(throttle)
                 for _ in range(5):
                     self._engine_sound_v2.update(0.016)
-                
-                # Generiere ~0.8 Sekunden Audio
-                sample_count = int(_SAMPLE_RATE * 0.8)
+
+                # Generate exactly ONE complete engine cycle so pygame can
+                # loop it seamlessly (no silence padding, no loop-point click)
+                rpm = self._engine_sound_v2.current_rpm
+                cycle_duration = 2.0 * 60.0 / max(rpm, 1.0)
+                sample_count = int(_SAMPLE_RATE * cycle_duration)
                 audio_bytes = self._engine_sound_v2.gen_audio(sample_count)
                 
                 # Konvertiere Mono zu Stereo
