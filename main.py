@@ -1484,8 +1484,9 @@ class SettingsScene:
 
 def main() -> None:
     pygame.init()
-    # Phase 12.2: Fullscreen support
-    flags = pygame.FULLSCREEN if FULLSCREEN else 0
+    # pygame.SCALED keeps the 1280×720 logical surface and stretches it to
+    # fill the actual window/screen — fixes the "small window in fullscreen" bug.
+    flags = pygame.SCALED | (pygame.FULLSCREEN if FULLSCREEN else 0)
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), flags)
     pygame.display.set_caption("Panic Pilot")
 
