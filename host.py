@@ -122,6 +122,19 @@ class HostGame(Game):
             self.running           = False
             return
 
+        # Mid-game disconnect: after countdown, return to lobby when client drops
+        if not self._net.is_connected() and self._countdown <= 0 and not self.game_over and not self.winner:
+            if not getattr(self, "_disconnect_timer", None):
+                self._disconnect_timer = 3.0
+            self._disconnect_timer -= dt
+            if self._disconnect_timer <= 0:
+                self._return_to_lobby = True
+                self._lobby_initiator = "remote"
+                self.running = False
+                return
+        else:
+            self._disconnect_timer = None
+
         # Phase 11.1: request_lobby_state während des Spiels ignorieren
         # (wird in HostLobby behandelt; hier nur leeren damit Flag nicht hängt)
         self._net.client_requests_state()
@@ -235,13 +248,25 @@ class HostGame(Game):
         # Pause-Overlay (Host zeichnet es auch – Client erhält _paused via Paket)
         if self._paused:
             self.draw_pause_overlay(self.screen)
+        # Disconnect countdown overlay
+        if getattr(self, "_disconnect_timer", None) is not None:
+            self._draw_disconnect_overlay()
         self._draw_status_overlay()
         pygame.display.flip()
 
+    def _draw_disconnect_overlay(self) -> None:
+        overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 160))
+        self.screen.blit(overlay, (0, 0))
+        f = pygame.font.SysFont("Arial", 36, bold=True)
+        lbl = f.render("Connection lost – returning to lobby …", True, ORANGE)
+        self.screen.blit(lbl, ((SCREEN_W - lbl.get_width()) // 2,
+                                (SCREEN_H - lbl.get_height()) // 2))
+
     def _draw_status_overlay(self) -> None:
-        # Verbindungsstatus oben rechts
-        txt, color = (("NAVIGATOR VERBUNDEN", GREEN) if self._net.is_connected()
-                      else ("Warte auf Navigator …", ORANGE))
+        # Connection status top-right
+        txt, color = (("NAVIGATOR CONNECTED", GREEN) if self._net.is_connected()
+                      else ("Waiting for navigator …", ORANGE))
         lbl = self._status_font.render(txt, True, color)
         self.screen.blit(lbl, (SCREEN_W - lbl.get_width() - 12, 12))
 

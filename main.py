@@ -1355,7 +1355,10 @@ class SettingsScene:
         self._btn_test  = Button(cx, SCREEN_H // 2 + 110,
                                  "  Play Test Sound  ", w=280, h=46,
                                  accent=(0, 195, 100))
-        self._btn_back  = Button(cx, SCREEN_H // 2 + 178,
+        self._btn_fullscreen = Button(cx, SCREEN_H // 2 + 168,
+                                     "  Fullscreen: OFF  ", w=280, h=46,
+                                     accent=(60, 100, 180))
+        self._btn_back  = Button(cx, SCREEN_H // 2 + 232,
                                  "  Back  ", w=200, h=44)
         self._test_hint = ""
         self._test_t    = 0.0
@@ -1372,6 +1375,13 @@ class SettingsScene:
         import settings as _s
         _s.MUSIC_VOLUME = self._sl_music.value
         _s.SFX_VOLUME   = self._sl_sfx.value
+
+    def _toggle_fullscreen(self) -> None:
+        import settings as _s
+        _s.FULLSCREEN = not _s.FULLSCREEN
+        pygame.display.toggle_fullscreen()
+        lbl = "  Fullscreen: ON   " if _s.FULLSCREEN else "  Fullscreen: OFF  "
+        self._btn_fullscreen.label = lbl
 
     # ── Haupt-Loop ────────────────────────────────────────────────────────────
 
@@ -1399,6 +1409,8 @@ class SettingsScene:
                         _sound_mod.get().play_pickup_fuel()
                     self._test_hint = "▶ Test sound …"
                     self._test_t    = 1.2
+                if self._btn_fullscreen.is_clicked(event):
+                    self._toggle_fullscreen()
                 if self._btn_back.is_clicked(event):
                     self._apply_volumes()
                     return
@@ -1435,6 +1447,10 @@ class SettingsScene:
                                 SCREEN_H // 2 + 68))
 
         self._btn_test.draw(self.screen, mouse)
+        import settings as _s
+        self._btn_fullscreen.label = ("  Fullscreen: ON   " if getattr(_s, "FULLSCREEN", False)
+                                      else "  Fullscreen: OFF  ")
+        self._btn_fullscreen.draw(self.screen, mouse)
         self._btn_back.draw(self.screen, mouse)
 
         if self._test_hint and self._test_t > 0:
