@@ -53,6 +53,18 @@ C_INPUT_BG     = (14,  22,  44)
 C_INPUT_BORD   = (70, 120, 210)
 C_ERROR        = (220, 60, 60)
 
+
+def _handle_global_key(event: "pygame.event.Event") -> bool:
+    """Handle keys that work everywhere (F11 = fullscreen toggle).
+    Returns True if the event was consumed."""
+    if event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
+        import settings as _s
+        _s.FULLSCREEN = not _s.FULLSCREEN
+        pygame.display.toggle_fullscreen()
+        _s.save_settings()
+        return True
+    return False
+
 CLASS_COLORS = {
     "balanced":  (210,  45,  45),
     "speedster": (255, 140,   0),
@@ -469,6 +481,7 @@ class MainMenu:
             dt = clock.tick(60) / 1000.0;  self._t += dt
             mouse = pygame.mouse.get_pos()
             for event in pygame.event.get():
+                if _handle_global_key(event):                         continue
                 if event.type == pygame.QUIT:                        return "quit"
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     return "quit"
@@ -514,6 +527,7 @@ class SoloClassPicker:
             dt = clock.tick(60) / 1000.0;  self._t += dt
             mouse = pygame.mouse.get_pos()
             for event in pygame.event.get():
+                if _handle_global_key(event):         continue
                 if event.type == pygame.QUIT:         return None
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     return None
@@ -582,6 +596,7 @@ class HostSetupMenu:
             dt = clock.tick(60) / 1000.0;  self._t += dt
             mouse = pygame.mouse.get_pos()
             for event in pygame.event.get():
+                if _handle_global_key(event):         continue
                 if event.type == pygame.QUIT:         return None
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     return None
@@ -678,6 +693,7 @@ class ClientSetupMenu:
                 self._last_room_update = 0.0
             
             for event in pygame.event.get():
+                if _handle_global_key(event):         continue
                 if event.type == pygame.QUIT:         return None
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:  return None
@@ -864,6 +880,7 @@ class HostLobby:
             mouse = pygame.mouse.get_pos()
 
             for event in pygame.event.get():
+                if _handle_global_key(event):                 continue
                 if event.type == pygame.QUIT:
                     self._close(); return "back"
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -954,6 +971,7 @@ class HostLobby:
                 self._draw_waiting_for_ready()
                 pygame.time.wait(10)
                 for event in pygame.event.get():
+                    if _handle_global_key(event):                 continue
                     if event.type == pygame.QUIT:
                         self._close(); return "back"
             if not ready:
@@ -1116,6 +1134,7 @@ class ClientLobby:
             mouse = pygame.mouse.get_pos()
 
             for event in pygame.event.get():
+                if _handle_global_key(event):             continue
                 if event.type == pygame.QUIT:
                     self._leave(); return
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -1381,10 +1400,10 @@ class SettingsScene:
         sm = _sound_mod.get()
         sm.set_music_volume(self._sl_music.value)
         sm.set_sfx_volume(self._sl_sfx.value)
-        # Persistenz in settings-Modul
         import settings as _s
         _s.MUSIC_VOLUME = self._sl_music.value
         _s.SFX_VOLUME   = self._sl_sfx.value
+        _s.save_settings()
 
     def _toggle_fullscreen(self) -> None:
         import settings as _s
@@ -1392,6 +1411,7 @@ class SettingsScene:
         pygame.display.toggle_fullscreen()
         lbl = "  Fullscreen: ON   " if _s.FULLSCREEN else "  Fullscreen: OFF  "
         self._btn_fullscreen.label = lbl
+        _s.save_settings()
 
     # ── Haupt-Loop ────────────────────────────────────────────────────────────
 
@@ -1404,6 +1424,7 @@ class SettingsScene:
             mouse = pygame.mouse.get_pos()
 
             for event in pygame.event.get():
+                if _handle_global_key(event):                 continue
                 if event.type == pygame.QUIT:
                     return
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -1484,6 +1505,10 @@ class SettingsScene:
 # ── Einstiegspunkt ────────────────────────────────────────────────────────────
 
 def main() -> None:
+    # Load persisted settings before initialising the display
+    import settings as _s
+    _s.load_settings()
+
     # Linear filtering makes pygame.SCALED upscaling smooth at any screen size
     os.environ.setdefault("SDL_RENDER_SCALE_QUALITY", "linear")
     pygame.init()

@@ -6,7 +6,7 @@ SCREEN_W  = 1280
 SCREEN_H  = 720
 FPS       = 60
 TITLE     = "Panic Pilot"
-FULLSCREEN = False  # Phase 12.2: Fullscreen support
+FULLSCREEN = False
 
 BLACK       = (  0,   0,   0)
 WHITE       = (255, 255, 255)
@@ -55,6 +55,40 @@ MAX_PARTICLES = 120
 # =============================================================================
 MUSIC_VOLUME: int = 70   # Musik-Lautstärke (0-100)
 SFX_VOLUME:   int = 80   # Effekt-Lautstärke (0-100)
+
+# ── Settings persistence ──────────────────────────────────────────────────────
+
+import os as _os, json as _json
+
+_SETTINGS_FILE = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                               "user_settings.json")
+_PERSIST_KEYS  = ("FULLSCREEN", "MUSIC_VOLUME", "SFX_VOLUME")
+
+
+def load_settings() -> None:
+    """Load persisted user settings from user_settings.json into this module."""
+    import sys
+    mod = sys.modules[__name__]
+    try:
+        with open(_SETTINGS_FILE, "r", encoding="utf-8") as f:
+            data = _json.load(f)
+        for key in _PERSIST_KEYS:
+            if key in data:
+                setattr(mod, key, data[key])
+    except (FileNotFoundError, _json.JSONDecodeError, OSError):
+        pass  # First run or corrupt file — use defaults
+
+
+def save_settings() -> None:
+    """Persist the current user settings to user_settings.json."""
+    import sys
+    mod = sys.modules[__name__]
+    data = {key: getattr(mod, key) for key in _PERSIST_KEYS}
+    try:
+        with open(_SETTINGS_FILE, "w", encoding="utf-8") as f:
+            _json.dump(data, f, indent=2)
+    except OSError:
+        pass
 
 # =============================================================================
 #  Car-Klassen  –  Phase 9
