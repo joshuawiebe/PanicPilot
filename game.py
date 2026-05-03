@@ -713,28 +713,109 @@ class Game:
         surface.blit(self._fog_surf, (0, 0))
 
     def draw_pings(self, surface: pygame.Surface) -> None:
+        """Draw navigator pings with ripple animation, color urgency shift, and distance cue."""
+        now_ms = pygame.time.get_ticks()
+        car_x = self.cars[0].state.x
+        car_y = self.cars[0].state.y
+
         for wx, wy, timer in self.pings:
             sx, sy = self.camera.w2s(wx, wy)
-            frac = max(0.0, timer / PING_DURATION)
-            if int(timer * PING_BLINK_HZ * 2) % 2 != 0:
+            frac = max(0.0, timer / PING_DURATION)  # 1.0 → 0.0 as ping ages
+
+            # Color shift: cyan → orange → red based on age
+            if frac > 0.5:
+                t = (frac - 0.5) * 2.0  # 1.0 at fresh, 0.0 at half-life
+                r = int(0 * t + 255 * (1 - t))
+                g = int(220 * t + 165 * (1 - t))
+                b = int(255 * t + 0 * (1 - t))
+            else:
+                t = frac * 2.0  # 1.0 at half-life, 0.0 at expiry
+                r = int(255 * 1.0)
+                g = int(165 * t + 60 * (1 - t))
+                b = 0
+            base_color = (r, g, b)
+
+            # Distance cue: scale max ripple radius by world-distance (clamped)
+            world_dist = math.hypot(wx - car_x, wy - car_y)
+            dist_scale = min(1.0, world_dist / 600.0)
+            max_ripple_r = int(18 + 22 * dist_scale)
+
+            # Ripple rings: 3 rings with phase offset
+            alpha_base = int(max(40, 200 * frac))
+            for ring in range(3):
+                phase_offset = ring * 400  # ms offset per ring
+                ring_t = ((now_ms + phase_offset) % 1200) / 1200.0  # 0→1 over 1.2s
+                ring_r = int(8 + (max_ripple_r - 8) * ring_t)
+                ring_alpha = int(alpha_base * (1.0 - ring_t) * 0.8)
+                if ring_r < 2 or ring_alpha < 5:
+                    continue
+                size = ring_r * 2 + 4
+                mid = ring_r + 2
+                tmp = pygame.Surface((size, size), pygame.SRCALPHA)
+                pygame.draw.circle(tmp, (*base_color, ring_alpha), (mid, mid), ring_r, 2)
+                surface.blit(tmp, (int(sx) - mid, int(sy) - mid))
+
+            # Static center dot + cross-arms (always visible)
+            core_alpha = int(max(80, 220 * frac))
+            core_size = 32
+            core_mid = 16
+            core = pygame.Surface((core_size, core_size), pygame.SRCALPHA)
+            pygame.draw.circle(core, (*base_color, core_alpha), (core_mid, core_mid), 5, 2)
+            for dx, dy in [(10, 0), (-10, 0), (0, 10), (0, -10)]:
+                pygame.draw.line(core, (*base_color, core_alpha),
+                                 (core_mid, core_mid),
+                                 (core_mid + dx, core_mid + dy), 2)
+            pygame.draw.circle(core, (255, 255, 160, core_alpha), (core_mid, core_mid), 3)
+            surface.blit(core, (int(sx) - core_mid, int(sy) - core_mid))
+
+        # Draw off-screen arrows for pings not visible in current viewport
+        self.draw_ping_arrows(surface)
+
+    def draw_ping_arrows(self, surface: pygame.Surface) -> None:
+        """Draw edge arrows pointing toward pings that are off-screen."""
+        margin = 28
+        for wx, wy, timer in self.pings:
+            sx, sy = self.camera.w2s(wx, wy)
+            # Skip pings already visible on screen
+            if margin <= sx <= SCREEN_W - margin and margin <= sy <= SCREEN_H - margin:
                 continue
-            alpha = int(max(60, 255 * frac))
-            radius = int(max(4, 14 + 6 * frac))
-            size = radius * 2 + 24
-            mid = size // 2
-            tmp = pygame.Surface((size, size), pygame.SRCALPHA)
-            pygame.draw.circle(tmp, (0, 220, 255, alpha), (mid, mid), radius, 2)
-            arm = radius + 7
-            for dx, dy in [(arm, 0), (-arm, 0), (0, arm), (0, -arm)]:
-                pygame.draw.line(
-                    tmp,
-                    (0, 220, 255, alpha),
-                    (mid, mid),
-                    (mid + dx // 2, mid + dy // 2),
-                    2,
-                )
-            pygame.draw.circle(tmp, (255, 255, 100, alpha), (mid, mid), 4)
-            surface.blit(tmp, (sx - mid, sy - mid))
+
+            frac = max(0.0, timer / PING_DURATION)
+            alpha = int(max(80, 220 * frac))
+            # Color shift same as draw_pings
+            if frac > 0.5:
+                t = (frac - 0.5) * 2.0
+                color = (int(255 * (1 - t)), int(220 * t + 165 * (1 - t)), int(255 * t))
+            else:
+                color = (255, int(165 * frac * 2 + 60 * (1 - frac * 2)), 0)
+
+            # Clamp to screen edge with margin
+            cx = max(margin, min(SCREEN_W - margin, sx))
+            cy = max(margin, min(SCREEN_H - margin, sy))
+
+            # Draw arrow pointing from edge toward the ping
+            dx = sx - SCREEN_W // 2
+            dy = sy - SCREEN_H // 2
+            length = math.hypot(dx, dy)
+            if length < 1:
+                continue
+            nx, ny = dx / length, dy / length
+
+            # Arrow tip at clamped position
+            tip = (int(cx), int(cy))
+            # Arrow body
+            back_x = int(cx - nx * 14)
+            back_y = int(cy - ny * 14)
+            perp_x = int(-ny * 7)
+            perp_y = int(nx * 7)
+
+            arrow_surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            pygame.draw.polygon(arrow_surf, (*color, alpha), [
+                tip,
+                (back_x + perp_x, back_y + perp_y),
+                (back_x - perp_x, back_y - perp_y),
+            ])
+            surface.blit(arrow_surf, (0, 0))
 
     def draw_hud(self, surface: pygame.Surface) -> None:
         s = self.cars[0].state
