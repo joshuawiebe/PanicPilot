@@ -216,42 +216,68 @@ class TextInput:
 
     @staticmethod
     def _get_clipboard() -> str:
-        """Get clipboard content (cross-platform attempt)."""
-        import subprocess
+        """Get clipboard content (cross-platform). Tries pygame.scrap first, then subprocess."""
         import sys
+        # Try pygame.scrap first (works without external tools)
+        try:
+            if pygame.scrap.get_init():
+                data = pygame.scrap.get(pygame.SCRAP_TEXT)
+                if data:
+                    return data.decode("utf-8", errors="ignore").rstrip("\x00").strip()
+        except Exception:
+            pass
+        # Fallback: subprocess
+        import subprocess
         try:
             if sys.platform == "win32":
-                return subprocess.check_output(["powershell", "-Command", "Get-Clipboard"], 
+                return subprocess.check_output(["powershell", "-Command", "Get-Clipboard"],
                                                text=True, timeout=1).strip()
-            elif sys.platform == "darwin":  # macOS
+            elif sys.platform == "darwin":
                 return subprocess.check_output(["pbpaste"], text=True, timeout=1).strip()
             else:  # Linux
                 try:
-                    return subprocess.check_output(["xclip", "-selection", "clipboard", "-o"], 
+                    return subprocess.check_output(["xclip", "-selection", "clipboard", "-o"],
                                                    text=True, timeout=1).strip()
                 except FileNotFoundError:
-                    return subprocess.check_output(["xsel", "-b"], 
-                                                   text=True, timeout=1).strip()
+                    try:
+                        return subprocess.check_output(["xsel", "-b"],
+                                                       text=True, timeout=1).strip()
+                    except FileNotFoundError:
+                        pass
         except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
-            return ""
+            pass
+        return ""
 
     @staticmethod
     def _set_clipboard(text: str) -> None:
-        """Set clipboard content (cross-platform attempt)."""
-        import subprocess
+        """Set clipboard content (cross-platform). Tries pygame.scrap first, then subprocess."""
         import sys
+        # Try pygame.scrap first
+        try:
+            if pygame.scrap.get_init():
+                pygame.scrap.put(pygame.SCRAP_TEXT, text.encode("utf-8") + b"\x00")
+                return
+        except Exception:
+            pass
+        # Fallback: subprocess
+        import subprocess
         try:
             if sys.platform == "win32":
-                subprocess.run(["powershell", "-Command", f"Set-Clipboard -Value '{text.replace(chr(39), chr(39)+chr(39))}'"], 
-                              timeout=1, check=False)
-            elif sys.platform == "darwin":  # macOS
+                subprocess.run(["powershell", "-Command",
+                                f"Set-Clipboard -Value '{text.replace(chr(39), chr(39)+chr(39))}'\'"],
+                               timeout=1, check=False)
+            elif sys.platform == "darwin":
                 subprocess.run(["pbcopy"], input=text.encode(), timeout=1, check=False)
             else:  # Linux
                 try:
-                    subprocess.run(["xclip", "-selection", "clipboard"], 
-                                  input=text.encode(), timeout=1, check=False)
+                    subprocess.run(["xclip", "-selection", "clipboard"],
+                                   input=text.encode(), timeout=1, check=False)
                 except FileNotFoundError:
-                    subprocess.run(["xsel", "-b"], input=text.encode(), timeout=1, check=False)
+                    try:
+                        subprocess.run(["xsel", "-b"],
+                                       input=text.encode(), timeout=1, check=False)
+                    except FileNotFoundError:
+                        pass
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
 
@@ -1176,7 +1202,7 @@ class ClientLobby:
         game._lobby_ready_sent = True
         print("DEBUG: ClientGame.run() starting")
         game.run()
-        print("DEBUG: ClientGame.run() beendet, return_to_lobby =",
+        print("DEBUG: ClientGame.run() finished, return_to_lobby =",
               getattr(game, "_return_to_lobby", False))
         # Flags NACH dem Spiel zurücksetzen
         if self._net.is_connected():
@@ -1190,8 +1216,9 @@ class ClientLobby:
 
     def _draw_status(self, msg: str, color: tuple) -> None:
         self.screen.fill(MENU_BG)
-        f = pygame.font.SysFont("Arial", 28, bold=True)
-        t = f.render(msg, True, color)
+        if not hasattr(self, "_status_font"):
+            self._status_font = pygame.font.SysFont("Arial", 28, bold=True)
+        t = self._status_font.render(msg, True, color)
         self.screen.blit(t, ((SCREEN_W - t.get_width())  // 2,
                               (SCREEN_H - t.get_height()) // 2))
         pygame.display.flip()
@@ -1436,6 +1463,12 @@ def main() -> None:
     flags = pygame.FULLSCREEN if FULLSCREEN else 0
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), flags)
     pygame.display.set_caption("Panic Pilot")
+
+    # Initialize pygame.scrap for clipboard support (must be after display.set_mode)
+    try:
+        pygame.scrap.init()
+    except Exception:
+        pass  # scrap not available on all platforms; subprocess fallback will be used
 
     # ── Phase 12: Audio-System initialisieren ─────────────────────────────────
     _sm = None
