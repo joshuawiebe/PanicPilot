@@ -89,6 +89,9 @@ class ClientGame:
         self._pause_btn_rects: dict = {}
         self._lobby_ready_sent = False   # Phase 11.3: ready_for_map schon gesendet?
         
+        self._pending_mode_request: int | None = None
+        self._mode_request_timer:   float      = 0.0
+
         # Phase 12.2: Latency tracking for ping visualization
         self._frame_times: list[float] = []
         self._estimated_latency_ms: int = 0
@@ -295,6 +298,12 @@ class ClientGame:
                     elif event.key == pygame.K_m and (self._game_over or self._winner):
                         self.running         = False
                         self._return_to_menu = True
+                    elif event.key == pygame.K_y and self._pending_mode_request is not None:
+                        self._net.send_mode_change_confirm()
+                        self._pending_mode_request = None
+                    elif event.key == pygame.K_n and self._pending_mode_request is not None:
+                        self._net.send_mode_change_deny()
+                        self._pending_mode_request = None
                     elif self._paused and event.key == pygame.K_l:
                         self._do_return_to_lobby()
                     elif self._paused and event.key == pygame.K_q:
@@ -323,6 +332,12 @@ class ClientGame:
             if self._net.host_wants_lobby():
                 self._do_return_to_lobby()
                 break
+
+            # Mode change request from host (only post-race)
+            requested_mode = self._net.get_mode_change_request()
+            if requested_mode is not None and (self._game_over or self._winner):
+                self._pending_mode_request = requested_mode
+                self._mode_request_timer   = 10.0  # 10 second timeout to respond
 
             # Map-Update (nach Reset)
             m = self._net.get_map()
@@ -383,6 +398,14 @@ class ClientGame:
                 self._local_pings = [p for p in self._local_pings if p[2] > 0]
                 for p in self._local_pings:
                     p[2] -= dt
+
+                # Mode change request timeout
+                if self._pending_mode_request is not None:
+                    self._mode_request_timer -= dt
+                    if self._mode_request_timer <= 0:
+                        # Auto-deny on timeout
+                        self._net.send_mode_change_deny()
+                        self._pending_mode_request = None
 
             self._draw()
 
@@ -588,6 +611,10 @@ class ClientGame:
         if self._game_over or self._winner:
             self._draw_winner_overlay()
 
+        # Mode change request dialog (post-race)
+        if self._pending_mode_request is not None:
+            self._draw_mode_change_dialog()
+
         # ── Phase 5.3: Pause-Overlay ─────────────────────────────────────────
         if self._paused:
             self._draw_pause_overlay()
@@ -612,6 +639,29 @@ class ClientGame:
                 return
 
     # ── Rendering ─────────────────────────────────────────────────────────────
+
+    def _draw_mode_change_dialog(self) -> None:
+        """Banner asking navigator to accept/deny a host mode change request."""
+        if self._pending_mode_request is None:
+            return
+        modes = {1: "Split Control", 2: "Panic Pilot", 3: "PvP Racing"}
+        mode_name = modes.get(self._pending_mode_request, "?")
+        secs_left = max(0, int(self._mode_request_timer) + 1)
+
+        panel_w, panel_h = 520, 100
+        px = (SCREEN_W - panel_w) // 2
+        py = SCREEN_H // 2 + 60
+        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel.fill((20, 20, 40, 220))
+        pygame.draw.rect(panel, ORANGE, (0, 0, panel_w, panel_h), 2, border_radius=8)
+        self.screen.blit(panel, (px, py))
+
+        f_big = pygame.font.SysFont("Arial", 22, bold=True)
+        f_sm  = pygame.font.SysFont("Arial", 16)
+        title = f_big.render(f"Host wants to switch to {mode_name}", True, ORANGE)
+        sub   = f_sm.render(f"[Y] Accept   [N] Decline   (auto-decline in {secs_left}s)", True, WHITE)
+        self.screen.blit(title, (px + (panel_w - title.get_width()) // 2, py + 16))
+        self.screen.blit(sub,   (px + (panel_w - sub.get_width())   // 2, py + 54))
 
     def _draw_pause_overlay(self) -> None:
         """Erweitertes Pause-Overlay mit Lobby/Quit-Buttons (Phase 11)."""

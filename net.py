@@ -90,6 +90,8 @@ class HostConnection:
         self._client_back_lobby     = False
         self._client_requests_state = False
         self._client_ready_for_map  = False   # Phase 11.2: 3-Wege-Handshake
+        self._mode_change_confirm   = False
+        self._mode_change_deny      = False
         self._connected  = False
         self._running    = False
         self._new_client = False
@@ -167,6 +169,22 @@ class HostConnection:
         """Informs the client that the game is returning to the lobby."""
         self.send_state({"type": "back_to_lobby"})
 
+    def send_mode_change_request(self, new_mode: int) -> None:
+        """Asks the navigator to accept a mode switch post-race."""
+        self.send_state({"type": "mode_change_request", "new_mode": new_mode})
+
+    def client_confirmed_mode_change(self) -> bool:
+        """True (once) if the navigator accepted the mode change request."""
+        with self._lock:
+            flag, self._mode_change_confirm = self._mode_change_confirm, False
+        return flag
+
+    def client_denied_mode_change(self) -> bool:
+        """True (once) if the navigator rejected the mode change request."""
+        with self._lock:
+            flag, self._mode_change_deny = self._mode_change_deny, False
+        return flag
+
     def client_wants_lobby(self) -> bool:
         """True (einmalig) wenn Client das Rennen zur Lobby abbrechen will."""
         with self._lock:
@@ -204,6 +222,8 @@ class HostConnection:
             self._client_back_lobby     = False
             self._client_requests_state = False
             self._client_ready_for_map  = False
+            self._mode_change_confirm   = False
+            self._mode_change_deny      = False
             self._new_client            = False
 
     def get_client_lobby(self) -> Optional[dict]:
@@ -273,6 +293,10 @@ class HostConnection:
                     elif msg_type == "ready_for_map":
                         self._client_ready_for_map = True
                         print("DEBUG net: Host received ready_for_map from client")
+                    elif msg_type == "mode_change_confirm":
+                        self._mode_change_confirm = True
+                    elif msg_type == "mode_change_deny":
+                        self._mode_change_deny = True
                     else:
                         self._inbox = msg   # Spiel-Input: immer nur neuesten behalten
         except (ConnectionError, OSError, json.JSONDecodeError) as e:
@@ -313,9 +337,10 @@ class ClientConnection:
         self._map_inbox: Optional[dict] = None
         self._host_lobby_inbox: Optional[dict] = None
         self._start_inbox: Optional[dict] = None
-        self._kick_flag       = False
-        self._host_back_lobby = False
-        self._connected       = False
+        self._kick_flag              = False
+        self._host_back_lobby        = False
+        self._mode_change_request    : Optional[int] = None
+        self._connected              = False
 
     # ─── Öffentliche API ─────────────────────────────────────────────────────
 
@@ -425,18 +450,33 @@ class ClientConnection:
         """
         self.send_input({"type": "ready_for_map"})
 
+    def get_mode_change_request(self) -> Optional[int]:
+        """Returns requested new_mode (once) if host sent a mode change request."""
+        with self._lock:
+            val, self._mode_change_request = self._mode_change_request, None
+        return val
+
+    def send_mode_change_confirm(self) -> None:
+        """Accept the host's mode change request."""
+        self.send_input({"type": "mode_change_confirm"})
+
+    def send_mode_change_deny(self) -> None:
+        """Reject the host's mode change request."""
+        self.send_input({"type": "mode_change_deny"})
+
     def reset_lobby_flags(self) -> None:
         """
         Setzt alle transienten Signalflags zurück (Phase 11.2).
         Aufrufen wenn Client aus dem Spiel zurück in die Lobby geht.
         """
         with self._lock:
-            self._inbox             = None
-            self._map_inbox         = None
-            self._host_lobby_inbox  = None
-            self._start_inbox       = None
-            self._kick_flag         = False
-            self._host_back_lobby   = False
+            self._inbox                  = None
+            self._map_inbox              = None
+            self._host_lobby_inbox       = None
+            self._start_inbox            = None
+            self._kick_flag              = False
+            self._host_back_lobby        = False
+            self._mode_change_request    = None
 
     def is_connected(self) -> bool:
         with self._lock:
@@ -476,6 +516,8 @@ class ClientConnection:
                         self._kick_flag = True
                     elif msg_type == "back_to_lobby":
                         self._host_back_lobby = True
+                    elif msg_type == "mode_change_request":
+                        self._mode_change_request = msg.get("new_mode")
                     else:
                         self._inbox = msg
         except (ConnectionError, OSError, json.JSONDecodeError) as e:

@@ -67,6 +67,7 @@ class HostGame(Game):
         self._last_client_inp    = InputState()
         self._pending_map_send   = False
         self._return_to_settings = False
+        self._mode_switch_pending: int | None = None  # requested new mode, awaiting confirm
 
         self._status_font = pygame.font.SysFont("Arial", 15, bold=True)
         self._mode_font   = pygame.font.SysFont("Arial", 22, bold=True)
@@ -108,6 +109,16 @@ class HostGame(Game):
                 self.reset_for_mode(self.mode)
                 self._pending_map_send = True
                 self._update_caption()
+        elif event.key == pygame.K_n and (self.game_over or self.winner):
+            # Request mode switch post-race (cycle through modes)
+            new_mode = (self.mode % 3) + 1
+            if self._net.is_connected():
+                self._mode_switch_pending = new_mode
+                self._net.send_mode_change_request(new_mode)
+            else:
+                # No navigator connected: switch immediately
+                self.mode = new_mode
+                self._update_caption()
         elif event.key == pygame.K_s and (self.game_over or self.winner):
             self.running               = False
             self._return_to_settings   = True
@@ -138,6 +149,15 @@ class HostGame(Game):
         # Phase 11.1: request_lobby_state während des Spiels ignorieren
         # (wird in HostLobby behandelt; hier nur leeren damit Flag nicht hängt)
         self._net.client_requests_state()
+
+        # Mode switch: check for navigator confirm/deny
+        if self._mode_switch_pending is not None:
+            if self._net.client_confirmed_mode_change():
+                self.mode = self._mode_switch_pending
+                self._mode_switch_pending = None
+                self._update_caption()
+            elif self._net.client_denied_mode_change():
+                self._mode_switch_pending = None
 
         # Map-Handshake: einmalig nach neuem Client oder Reset
         if self._net.got_new_client() or self._pending_map_send:
@@ -279,13 +299,20 @@ class HostGame(Game):
 
         # Tasten-Hint unten links – unterschiedlich je Zustand
         if self.game_over or self.winner:
-            hint_txt = "[R]=Restart  [M]=Menu  [S]=Settings"
+            hint_txt = "[R]=Restart  [N]=Switch Mode  [M]=Menu  [S]=Settings"
             hint_color = CYAN
         else:
             hint_txt  = "A/D=Lenken  M=Modus  P=Pause  R=Reset"
             hint_color = GRAY
         hint = self._status_font.render(hint_txt, True, hint_color)
         self.screen.blit(hint, (12, SCREEN_H - 38))
+
+        # Pending mode change notification
+        if self._mode_switch_pending is not None:
+            modes = {1: "Split Control", 2: "Panic Pilot", 3: "PvP Racing"}
+            pending_txt = f"Requesting switch to {modes.get(self._mode_switch_pending, '?')} … (waiting for navigator)"
+            plbl = self._status_font.render(pending_txt, True, ORANGE)
+            self.screen.blit(plbl, (12, SCREEN_H - 58))
 
     def run(self) -> None:
         try:
