@@ -652,13 +652,11 @@ class ClientSetupMenu:
         self._discovered_rects: list[tuple[pygame.Rect, str]] = []  # (rect, ip)
 
     def _try_connect(self) -> str | None:
-        """Validiert IP und gibt sie zurück oder setzt Fehler und gibt None zurück."""
+        """Validates IP and returns it, or sets error and returns None."""
         ip = self._input.text.strip() or "127.0.0.1"
         if not _validate_ip(ip):
             self._input.error = "Invalid IP address (e.g. 192.168.1.42)"
             return None
-        # Phase 12.1: Mark as successful in history
-        self._history.add_or_update(ip, "Host", success=True)
         return ip
     
     def _update_discovered_rooms(self) -> None:
@@ -832,6 +830,7 @@ class HostLobby:
             own_ip = "localhost"
         
         room_name = f"Host ({own_ip})"
+        self._room_name  = room_name
         self._broadcaster = RoomBroadcaster(room_name, tcp_port=self.NET_PORT)
         self._broadcaster.start()
 
@@ -907,7 +906,7 @@ class HostLobby:
             self._draw(mouse)
 
     def _send_lobby_packet(self) -> None:
-        """Baut das vollständige Lobby-Paket und sendet es (wenn verbunden)."""
+        """Builds and sends the full lobby packet (when connected)."""
         if self._net.is_connected():
             self._net.send_lobby({
                 "host_class":  self._picker.selected,
@@ -915,6 +914,7 @@ class HostLobby:
                 "length":      self.length,
                 "speed_scale": self.speed_scale,
                 "status":      "lobby",
+                "room_name":   getattr(self, "_room_name", f"Host"),
             })
 
     def _run_game(self) -> str:
@@ -1098,9 +1098,13 @@ class ClientLobby:
                                 w=270, h=46, accent=(200, 60, 60))
 
     def run(self) -> None:
+        from connection_history import ConnectionHistory
+        _history = ConnectionHistory()
+
         clock = pygame.time.Clock()
         self._draw_status(f"Connecting to {self.host_ip} …", WHITE)
         if not self._net.connect(timeout=self.CONNECT_TIMEOUT):
+            _history.add_or_update(self.host_ip, f"Host ({self.host_ip})", success=False)
             self._draw_status("Connection failed.", RED)
             pygame.time.wait(2500)
             return
@@ -1147,11 +1151,16 @@ class ClientLobby:
             # Host-Lobby-Info empfangen
             hl = self._net.get_host_lobby()
             if hl:
+                prev_handshaked = bool(self._host_info)
                 self._host_info   = hl
                 self._last_update = self._t
                 # Picker-Modus sofort aktualisieren
                 host_mode = int(hl.get("mode", 3))
                 self._picker.pvp_mode = (host_mode == 3)
+                # Record successful connection in history on first handshake
+                if not prev_handshaked:
+                    room_name = hl.get("room_name", f"Host ({self.host_ip})")
+                    _history.add_or_update(self.host_ip, room_name, success=True)
 
             # Start-Signal – Phase 11.3: ready_for_map SOFORT senden, BEVOR ClientGame gebaut wird
             start = self._net.get_start()
