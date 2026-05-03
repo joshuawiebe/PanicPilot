@@ -8,11 +8,37 @@ Future improvements may include items, buffs, or alternative control mechanics (
 
 ## Setup
 
-### Linux (Arch / Ubuntu / etc.)
+### Linux (Ubuntu / Debian)
 
-This project uses pyenv to manage Python versions via :contentReference[oaicite:0]{index=0}.
+#### 1. Install system dependencies
 
-#### 1. Install dependencies (Arch example)
+```bash
+sudo apt install python3 python3-pip python3-venv python3-dev build-essential \
+  libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libportaudio2
+```
+
+> Python 3.11+ is included in Ubuntu 22.04 LTS and later — no pyenv needed.
+
+#### 2. Set up the project
+
+```bash
+cd PanicPilot
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+#### 3. Run the game
+
+```bash
+python main.py
+```
+
+---
+
+### Linux (Arch)
+
+#### 1. Install dependencies
 
 ```bash
 sudo pacman -S python python-pip pyenv base-devel tk zlib bzip2 openssl readline sqlite libffi
@@ -112,23 +138,41 @@ python main.py
 
 ## Notes
 
-- On Linux, pyenv is used to manage Python versions
+- On Ubuntu/Debian, the system Python 3 is sufficient — no pyenv needed
+- On Arch/macOS, pyenv is used to manage Python versions
 - Always create the virtual environment after selecting the correct Python version
 - If pygame errors occur, it is usually caused by a Python version mismatch, not the code
+- Settings (volume, fullscreen) are saved automatically to `user_settings.json`
 
-### TODOs:
+## Controls
 
-- [x] Add a history of previously connected IPs along with custom usernames, and display them in the UI along with automated udp stream finding of open rooms (ex. "Simon's Room"). **✅ DONE (Phase 12.1)**
-- [x] Fix copy & paste functionality for IP addresses. **✅ DONE (Phase 12.1 - Cross-platform: Windows/macOS/Linux)**
-- [ ] Implement engine (motor) sound.
-- [ ] Add ping visualization in fog (Mode 2 → PanicPilot).
-- [ ] Improve fullscreen mode and ensure a clean layout of UI elements.
+| Key | Action |
+|-----|--------|
+| A / D | Steer left / right (host car) |
+| R | Restart race |
+| M | Return to main menu (post-race) |
+| N | Request mode switch (post-race, requires navigator confirmation) |
+| P | Pause / unpause |
+| F11 | Toggle fullscreen (works everywhere) |
+| ESC | Back / leave |
+| Click (Mode 2) | Place navigator ping on map |
+| Y / N | Accept / decline mode switch request (navigator) |
+
+---
+
+## TODOs
+
+- [x] Add connection history and LAN room discovery (UDP). **✅ DONE**
+- [x] Fix copy & paste for IP addresses (cross-platform). **✅ DONE**
+- [x] Implement engine (motor) sound. **✅ DONE** — procedural synthesis, RPM-reactive
+- [x] Add ping visualization in fog (Mode 2). **✅ DONE** — ripple animation, off-screen arrows, urgency colors
+- [x] Fullscreen mode with correct scaling. **✅ DONE** — F11 shortcut, smooth upscaling, persisted setting
+- [x] Mode switching while connected. **✅ DONE** — post-race, requires navigator confirmation
+- [x] Translate everything to English. **✅ DONE**
+- [x] Client returns to lobby/menu after being kicked. **✅ DONE** — ESC dismisses kick screen
 - [ ] Upload Ben's documentation.
-- [ ] Fix connection issues, add a clear "connected" status, and allow smooth mode switching while connected and playing. Mode switching should require confirmation from the other player.
-- [ ] When the host kicks the client, the client should return to the main menu instead of needing to restart the game (ESC currently not working).
-- [ ] Translate everything into English (UI, descriptions, logs, etc.) and ensure consistency across the project.
-- [ ] An Github Action Automation to make an Release with an executable of this project to run it directly.
+- [ ] GitHub Actions release with bundled executable.
 
-### Currently Working on:
+### Currently working on
 
-- Engine (motor) sound (Task 3)
+Nothing — all major tasks complete. See above for open items.
