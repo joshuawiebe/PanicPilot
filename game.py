@@ -748,7 +748,7 @@ class Game:
         )
         if not self.game_over and self._race_started:
             if self.track.surface_at(s.x, s.y) == "grass":
-                lbl = self._warn_font.render("NEBEN DER STRECKE", True, YELLOW)
+                lbl = self._warn_font.render("OFF TRACK", True, YELLOW)
                 surface.blit(lbl, ((SCREEN_W - lbl.get_width()) // 2, SCREEN_H - 40))
 
     def draw_countdown(self, surface: pygame.Surface) -> None:
@@ -800,7 +800,7 @@ class Game:
         surface.blit(t_lbl, ((SCREEN_W - t_lbl.get_width()) // 2, cy))
         cy += t_lbl.get_height() + 28
         r_lbl = self._sub_font.render("[R]  Neustart", True, CYAN)
-        m_lbl = self._sub_font.render("[M]  Hauptmenü", True, YELLOW)
+        m_lbl = self._sub_font.render("[M]  Main Menu", True, YELLOW)
         surface.blit(r_lbl, ((SCREEN_W - r_lbl.get_width()) // 2, cy))
         surface.blit(
             m_lbl, ((SCREEN_W - m_lbl.get_width()) // 2, cy + r_lbl.get_height() + 12)
@@ -815,9 +815,9 @@ class Game:
         cx = SCREEN_W // 2
         bw, bh, gap = 300, 52, 14
         labels = [
-            ("resume", "[P/ESC]  Weiter spielen", (40, 90, 40)),
-            ("lobby", "[L]      Zur Lobby", (40, 60, 120)),
-            ("quit", "[Q]      Spiel beenden", (90, 30, 30)),
+            ("resume", "[P/ESC]  Resume", (40, 90, 40)),
+            ("lobby", "[L]      Back to Lobby", (40, 60, 120)),
+            ("quit", "[Q]      Quit Game", (90, 30, 30)),
         ]
         total_h = len(labels) * (bh + gap) - gap
         y0 = SCREEN_H // 2 - total_h // 2 + 30

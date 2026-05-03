@@ -104,7 +104,7 @@ class HostConnection:
         self._running = True
         t = threading.Thread(target=self._accept_loop, daemon=True, name="host-accept")
         t.start()
-        log.info(f"Host wartet auf Port {self._port} …")
+        log.info(f"Host listening on port {self._port} …")
 
     def send_state(self, state_dict: dict) -> None:
         """Schickt Spielzustand an verbundenen Client. Sicher bei Disconnect."""
@@ -115,7 +115,7 @@ class HostConnection:
         try:
             send_message(sock, state_dict)
         except (OSError, ConnectionError) as e:
-            log.warning(f"send_state fehlgeschlagen: {e}")
+            log.warning(f"send_state failed: {e}")
             self._mark_disconnected()
 
     def get_client_input(self) -> Optional[dict]:
@@ -160,11 +160,11 @@ class HostConnection:
         self.send_state({"type": "start", **data})
 
     def send_kick(self) -> None:
-        """Kickt den Client aus der Lobby."""
+        """Kicks the client from the lobby."""
         self.send_state({"type": "kick"})
 
     def send_back_to_lobby(self) -> None:
-        """Informiert den Client, dass das Spiel zur Lobby zurückkehrt."""
+        """Informs the client that the game is returning to the lobby."""
         self.send_state({"type": "back_to_lobby"})
 
     def client_wants_lobby(self) -> bool:
@@ -238,7 +238,7 @@ class HostConnection:
                     client, addr = server.accept()
                 except socket.timeout:
                     continue
-                log.info(f"Client verbunden: {addr}")
+                log.info(f"Client connected: {addr}")
                 client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 with self._lock:
                     self._client_sock = client
@@ -249,7 +249,7 @@ class HostConnection:
                                       daemon=True, name="host-recv")
                 rt.start()
                 rt.join()   # wartet bis Client trennt, dann erneut accept
-                log.info("Client getrennt – warte auf neuen Client …")
+                log.info("Client disconnected – waiting for new client …")
         except OSError as e:
             log.error(f"Server-Socket Fehler: {e}")
         finally:
@@ -272,11 +272,11 @@ class HostConnection:
                         self._client_requests_state = True
                     elif msg_type == "ready_for_map":
                         self._client_ready_for_map = True
-                        print("DEBUG net: Host empfängt ready_for_map vom Client")
+                        print("DEBUG net: Host received ready_for_map from client")
                     else:
                         self._inbox = msg   # Spiel-Input: immer nur neuesten behalten
         except (ConnectionError, OSError, json.JSONDecodeError) as e:
-            log.warning(f"recv_loop beendet: {e}")
+            log.warning(f"recv_loop ended: {e}")
         finally:
             self._mark_disconnected()
 
@@ -329,7 +329,7 @@ class ClientConnection:
         try:
             sock.connect((self._host_ip, self._port))
         except (ConnectionRefusedError, socket.timeout, OSError) as e:
-            log.warning(f"Verbindung zu {self._host_ip}:{self._port} fehlgeschlagen: {e}")
+            log.warning(f"Connection to {self._host_ip}:{self._port} failed: {e}")
             sock.close()
             return False
 
@@ -360,7 +360,7 @@ class ClientConnection:
         try:
             send_message(sock, input_dict)
         except (OSError, ConnectionError) as e:
-            log.warning(f"send_input fehlgeschlagen: {e}")
+            log.warning(f"send_input failed: {e}")
             self._mark_disconnected()
 
     def get_state(self) -> Optional[dict]:
@@ -466,12 +466,12 @@ class ClientConnection:
                 with self._lock:
                     if msg_type == "map":
                         self._map_inbox = msg
-                        print("DEBUG net: Client empfängt Karte (map-Paket)")
+                        print("DEBUG net: Client received map packet")
                     elif msg_type == "lobby_host":
                         self._host_lobby_inbox = msg
                     elif msg_type == "start":
                         self._start_inbox = msg
-                        print("DEBUG net: Client empfängt start-Paket")
+                        print("DEBUG net: Client received start packet")
                     elif msg_type == "kick":
                         self._kick_flag = True
                     elif msg_type == "back_to_lobby":
@@ -479,7 +479,7 @@ class ClientConnection:
                     else:
                         self._inbox = msg
         except (ConnectionError, OSError, json.JSONDecodeError) as e:
-            log.warning(f"client recv_loop beendet: {e}")
+            log.warning(f"client recv_loop ended: {e}")
         finally:
             self._mark_disconnected()
 

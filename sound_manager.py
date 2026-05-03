@@ -73,7 +73,7 @@ try:
     _HAS_NP = True
 except ImportError:
     _HAS_NP = False
-    log.warning("numpy nicht gefunden – nutze Python-Fallback für Soundgenerierung.")
+    log.warning("numpy not found – using Python fallback for sound generation.")
 
 
 # ─── Hilfsfunktionen ──────────────────────────────────────────────────────────
@@ -420,7 +420,7 @@ class SoundManager:
                               channels=_CHANNELS, buffer=_BUFFER)
             pygame.mixer.set_num_channels(16)
             self._ok = True
-            log.info("pygame.mixer initialisiert (%d Hz, %d Kanäle).",
+            log.info("pygame.mixer initialized (%d Hz, %d channels).",
                      _SAMPLE_RATE, pygame.mixer.get_num_channels())
             
             # Versuche neues Engine-Sound-System zu initialisieren
@@ -430,11 +430,11 @@ class SoundManager:
                     self._use_engine_sound_v2 = True
                     log.info("Engine-Sound v2 (Synthesis) aktiviert.")
                 except Exception as e:
-                    log.warning("Engine-Sound v2 Initialisierung fehlgeschlagen: %s – nutze Legacy-System.", e)
+                    log.warning("Engine sound v2 initialization failed: %s – falling back to legacy system.", e)
             
             self._load_all()
         except Exception as exc:
-            log.warning("Audio-Init fehlgeschlagen: %s – laufe ohne Sound.", exc)
+            log.warning("Audio init failed: %s – running without sound.", exc)
 
     # ─── Initialisierung ──────────────────────────────────────────────────────
 
@@ -499,7 +499,7 @@ class SoundManager:
                 self._eng_sounds.append(sound)
                 log.debug(f"Engine Sound {i}: Throttle {throttle:.2%}, RPM {self._engine_sound_v2.current_rpm:.0f}")
             except Exception as e:
-                log.warning(f"Engine Sound {i} Generation fehlgeschlagen: {e}")
+                log.warning(f"Engine sound {i} generation failed: {e}")
                 # Fallback auf Legacy
                 self._use_engine_sound_v2 = False
                 self._eng_sounds.clear()
@@ -521,7 +521,7 @@ class SoundManager:
         try:
             return fallback_fn()
         except Exception as exc:
-            log.warning("Sound-Generierungsfehler für %s: %s", filename, exc)
+            log.warning("Sound generation error for %s: %s", filename, exc)
             return None
 
     # ─── Lautstärke ───────────────────────────────────────────────────────────

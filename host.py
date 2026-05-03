@@ -254,7 +254,7 @@ class HostGame(Game):
 
         # Tasten-Hint unten links – unterschiedlich je Zustand
         if self.game_over or self.winner:
-            hint_txt = "[R]=Neustart  [M]=Menü  [S]=Einstellungen"
+            hint_txt = "[R]=Restart  [M]=Menu  [S]=Settings"
             hint_color = CYAN
         else:
             hint_txt  = "A/D=Lenken  M=Modus  P=Pause  R=Reset"

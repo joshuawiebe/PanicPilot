@@ -198,23 +198,23 @@ class ClientGame:
         if self._net.is_connected():
             if not self._lobby_ready_sent:
                 # Standalone-Lobby oder Sicherheits-Fallback
-                print("DEBUG: Client sendet ready_for_map in _connect_loop (Fallback)")
+                print("DEBUG: Client sending ready_for_map in _connect_loop (fallback)")
                 self._net.send_ready_for_map()
             else:
-                print("DEBUG: Client wartet auf Karte (ready_for_map bereits gesendet)")
+                print("DEBUG: Client waiting for map (ready_for_map already sent)")
             deadline = time.time() + MAP_WAIT_TIMEOUT
             while self.running and time.time() < deadline:
-                self._draw_waiting_screen("Warte auf Streckendaten …")
+                self._draw_waiting_screen("Waiting for track data …")
                 m = self._net.get_map()
                 if m:
-                    print("DEBUG: Client empfängt Karte – baue Strecke …")
+                    print("DEBUG: Client received map – building track …")
                     self._build_from_map(m)
                     return True
                 self._drain_events(0.08)
-            print("DEBUG: Client Map-Timeout nach", MAP_WAIT_TIMEOUT, "s")
-            self._draw_waiting_screen("Zeitüberschreitung – zurück zur Lobby …")
-            pygame.time.wait(1800)
-            return False
+            print("DEBUG: Client map timeout after", MAP_WAIT_TIMEOUT, "s")
+        self._draw_waiting_screen("Timed out – returning to lobby …")
+        pygame.time.wait(1800)
+        return False
 
         attempt = 0
         while self.running:
@@ -223,18 +223,18 @@ class ClientGame:
             if not self._net.connect(timeout=CONNECT_TIMEOUT):
                 self._drain_events(CONNECT_RETRY_INTERVAL)
                 continue
-            print("DEBUG: Standalone-Connect erfolgreich, sende ready_for_map")
+            print("DEBUG: Standalone connect successful, sending ready_for_map")
             self._net.send_ready_for_map()
             deadline = time.time() + MAP_WAIT_TIMEOUT
             while self.running and time.time() < deadline:
-                self._draw_waiting_screen("Warte auf Streckendaten …")
+                self._draw_waiting_screen("Waiting for track data …")
                 m = self._net.get_map()
                 if m:
-                    print("DEBUG: Client empfängt Karte – baue Strecke …")
+                    print("DEBUG: Client received map – building track …")
                     self._build_from_map(m)
                     return True
                 self._drain_events(0.08)
-            print("DEBUG: Standalone Map-Timeout, neuer Verbindungsversuch")
+            print("DEBUG: Standalone map timeout, retrying connection")
             self._net.shutdown()
             self._net = ClientConnection(self._host_ip, NET_PORT)
         return False
@@ -580,7 +580,7 @@ class ClientGame:
         # Untergrundwarnung
         if not self._game_over and not self._paused:
             if self.track.surface_at(self.car.state.x, self.car.state.y) == "grass":
-                lbl = self._warn_font.render("NEBEN DER STRECKE", True, YELLOW)
+                lbl = self._warn_font.render("OFF TRACK", True, YELLOW)
                 self.screen.blit(lbl, ((SCREEN_W - lbl.get_width()) // 2, SCREEN_H - 40))
 
         self._draw_countdown_overlay()
@@ -622,9 +622,9 @@ class ClientGame:
         cx  = SCREEN_W // 2
         bw, bh, gap = 300, 52, 14
         labels = [
-            ("resume", "[P/ESC]  Weiter spielen",  (40, 90, 40)),
-            ("lobby",  "[L]      Zur Lobby",        (40, 60, 120)),
-            ("quit",   "[Q]      Spiel beenden",    (90, 30, 30)),
+            ("resume", "[P/ESC]  Resume",        (40, 90, 40)),
+            ("lobby",  "[L]      Back to Lobby",  (40, 60, 120)),
+            ("quit",   "[Q]      Quit Game",       (90, 30, 30)),
         ]
         total_h = len(labels) * (bh + gap) - gap
         y0 = SCREEN_H // 2 - total_h // 2 + 30
@@ -696,11 +696,11 @@ class ClientGame:
             f"Zeit: {mins:02d}:{secs:02d}.{cs:02d}", True, WHITE)
         self.screen.blit(t_lbl, ((SCREEN_W - t_lbl.get_width()) // 2, cy))
         cy += t_lbl.get_height() + 24
-        m_lbl = self._mid_font.render("[M]  Hauptmenü", True, YELLOW)
+        m_lbl = self._mid_font.render("[M]  Main Menu", True, YELLOW)
         self.screen.blit(m_lbl, ((SCREEN_W - m_lbl.get_width()) // 2, cy))
 
     def _draw_status_overlay(self) -> None:
-        status = self._status_font.render("VERBUNDEN", True, GREEN)
+        status = self._status_font.render("CONNECTED", True, GREEN)
         self.screen.blit(status, (SCREEN_W - status.get_width() - 12, 12))
         modes  = {1: "SPLIT CONTROL", 2: "⦿ NAVIGATOR", 3: "⚡ AUTO B (PvP)"}
         colors = {1: GRAY, 2: CYAN, 3: YELLOW}
@@ -720,15 +720,15 @@ class ClientGame:
         self.screen.blit(t, ((SCREEN_W - t.get_width()) // 2, 180))
         m = self._mid_font.render(msg, True, WHITE)
         self.screen.blit(m, ((SCREEN_W - m.get_width()) // 2, 290))
-        h = self._status_font.render("ESC = Abbrechen", True, GRAY)
+        h = self._status_font.render("ESC = Cancel", True, GRAY)
         self.screen.blit(h, ((SCREEN_W - h.get_width()) // 2, 340))
         pygame.display.flip()
 
     def _draw_disconnected_screen(self) -> None:
         self.screen.fill(HUD_BG)
-        lbl = self._big_font.render("Verbindung getrennt", True, RED)
+        lbl = self._big_font.render("Connection lost", True, RED)
         self.screen.blit(lbl, ((SCREEN_W - lbl.get_width()) // 2, SCREEN_H // 2 - 40))
-        h = self._mid_font.render("ESC = Beenden", True, GRAY)
+        h = self._mid_font.render("ESC = Quit", True, GRAY)
         self.screen.blit(h, ((SCREEN_W - h.get_width()) // 2, SCREEN_H // 2 + 30))
 
 
