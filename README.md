@@ -171,7 +171,7 @@ python main.py
 - [x] Translate everything to English. **✅ DONE**
 - [x] Client returns to lobby/menu after being kicked. **✅ DONE** — ESC dismisses kick screen
 - [ ] Upload Ben's documentation.
-- [ ] GitHub Actions release with bundled executable.
+- [x] GitHub Actions release with bundled executable. **✅ DONE** — PyInstaller spec + `.github/workflows/release.yml`; push a `vX.Y.Z` tag to trigger a multi-platform release (Windows / macOS / Linux)
 
 ### Currently working on
 
