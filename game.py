@@ -862,13 +862,13 @@ class Game:
         cy = SCREEN_H // 2 - 80
         if self.mode == 3:
             if self.winner == "host":
-                txt, color = "HOST GEWINNT!", CAR_COLOR_HOST
+                txt, color = "HOST WINS!", CAR_COLOR_HOST
             elif self.winner == "client":
-                txt, color = "CLIENT GEWINNT!", CAR_COLOR_CLIENT
+                txt, color = "CLIENT WINS!", CAR_COLOR_CLIENT
             else:
-                txt, color = "KEIN SPRIT!", ORANGE
+                txt, color = "OUT OF FUEL!", ORANGE
         else:
-            txt, color = ("ZIEL!", YELLOW) if self.winner else ("KEIN SPRIT!", ORANGE)
+            txt, color = ("FINISH!", YELLOW) if self.winner else ("OUT OF FUEL!", ORANGE)
         lbl = self._win_font.render(txt, True, color)
         surface.blit(lbl, ((SCREEN_W - lbl.get_width()) // 2, cy))
         cy += lbl.get_height() + 10
@@ -876,11 +876,11 @@ class Game:
         secs = int(self.elapsed_time) % 60
         cs = int((self.elapsed_time % 1) * 100)
         t_lbl = self._sub_font.render(
-            f"Zeit: {mins:02d}:{secs:02d}.{cs:02d}", True, WHITE
+            f"Time: {mins:02d}:{secs:02d}.{cs:02d}", True, WHITE
         )
         surface.blit(t_lbl, ((SCREEN_W - t_lbl.get_width()) // 2, cy))
         cy += t_lbl.get_height() + 28
-        r_lbl = self._sub_font.render("[R]  Neustart", True, CYAN)
+        r_lbl = self._sub_font.render("[R]  Restart", True, CYAN)
         m_lbl = self._sub_font.render("[M]  Main Menu", True, YELLOW)
         surface.blit(r_lbl, ((SCREEN_W - r_lbl.get_width()) // 2, cy))
         surface.blit(
@@ -935,6 +935,7 @@ class Game:
             y0 += bh + gap
 
     def draw(self) -> None:
+        self.screen = pygame.display.get_surface() or self.screen
         self.draw_world(self.screen)
         if self.mode == 2:
             csx, csy = self.camera.w2s(self.cars[0].state.x, self.cars[0].state.y)

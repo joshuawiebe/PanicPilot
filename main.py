@@ -54,13 +54,18 @@ C_INPUT_BORD   = (70, 120, 210)
 C_ERROR        = (220, 60, 60)
 
 
+def _set_display_mode(fullscreen: bool) -> pygame.Surface:
+    flags = pygame.SCALED | (pygame.FULLSCREEN if fullscreen else 0)
+    return pygame.display.set_mode((SCREEN_W, SCREEN_H), flags)
+
+
 def _handle_global_key(event: "pygame.event.Event") -> bool:
     """Handle keys that work everywhere (F11 = fullscreen toggle).
     Returns True if the event was consumed."""
     if event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
         import settings as _s
         _s.FULLSCREEN = not _s.FULLSCREEN
-        pygame.display.toggle_fullscreen()
+        _set_display_mode(_s.FULLSCREEN)
         _s.save_settings()
         return True
     return False
@@ -320,10 +325,11 @@ class TextInput:
             self.active = self.rect.collidepoint(event.pos)
         elif event.type == pygame.KEYDOWN and self.active:
             # Phase 12.1: Copy/Paste support (CTRL+C / CTRL+V)
-            if event.key == pygame.K_c and (event.mod & pygame.KMOD_CTRL or event.mod & pygame.KMOD_CMD):
+            cmd_mask = getattr(pygame, "KMOD_CMD", 0)
+            if event.key == pygame.K_c and (event.mod & pygame.KMOD_CTRL or event.mod & cmd_mask):
                 # Copy current text
                 self._set_clipboard(self.text)
-            elif event.key == pygame.K_v and (event.mod & pygame.KMOD_CTRL or event.mod & pygame.KMOD_CMD):
+            elif event.key == pygame.K_v and (event.mod & pygame.KMOD_CTRL or event.mod & cmd_mask):
                 # Paste from clipboard
                 clipboard = self._get_clipboard()
                 # Filter: only keep valid IP characters (0-9, .)
@@ -331,7 +337,7 @@ class TextInput:
                 available = 15 - len(self.text)
                 self.text += filtered[:available]
                 self.error = ""
-            elif event.key == pygame.K_a and (event.mod & pygame.KMOD_CTRL or event.mod & pygame.KMOD_CMD):
+            elif event.key == pygame.K_a and (event.mod & pygame.KMOD_CTRL or event.mod & cmd_mask):
                 # Select all (mark but don't implement special visual, just usage)
                 pass
             elif event.key == pygame.K_BACKSPACE:
@@ -479,6 +485,7 @@ class MainMenu:
         clock = pygame.time.Clock()
         while True:
             dt = clock.tick(60) / 1000.0;  self._t += dt
+            self.screen = pygame.display.get_surface() or self.screen
             mouse = pygame.mouse.get_pos()
             for event in pygame.event.get():
                 if _handle_global_key(event):                         continue
@@ -572,6 +579,8 @@ class HostSetupMenu:
         except OSError:
             self._own_ip = _sock.gethostbyname(_sock.gethostname())
         cx = SCREEN_W // 2
+        self._room_input = TextInput(cx, SCREEN_H//2 - 120, "Room name (shown in discovery)")
+        self._room_input.text = f"Host {self._own_ip}"
         self._slider   = Slider(cx, SCREEN_H//2 - 55, "Track Length (Tiles)", 10, 50, 20)
         self._modes    = [1, 2, 3]
         self._mode_idx = 0
@@ -581,7 +590,7 @@ class HostSetupMenu:
                              3: "PvP Racing  – two cars, one winner"}
         self._mode_colors = {1: (100, 180, 255), 2: ACCENT, 3: ACCENT2}
         y0 = SCREEN_H // 2 + 40
-        self._btn_speed = Button(cx, y0,       "Tempo",           w=290, h=50)
+        self._btn_speed = Button(cx, y0,       "Speed",           w=290, h=50)
         self._btn_mode  = Button(cx, y0 + 64,  "Switch Mode",  w=290, h=50)
         self._btn_lobby = Button(cx, y0 + 136, "  OPEN LOBBY  ", accent=ACCENT2)
         self._btn_back  = Button(cx, y0 + 204, "  Back  ",      w=180, h=44)
@@ -591,15 +600,19 @@ class HostSetupMenu:
             self._mode_idx  = self._modes.index(prefill.get("mode", 1))
             self._speed_idx = prefill.get("speed_idx", 1)
             self._slider.value = prefill.get("length", 20)
+            if "room_name" in prefill:
+                self._room_input.text = prefill.get("room_name", self._room_input.text)
         clock = pygame.time.Clock()
         while True:
             dt = clock.tick(60) / 1000.0;  self._t += dt
+            self.screen = pygame.display.get_surface() or self.screen
             mouse = pygame.mouse.get_pos()
             for event in pygame.event.get():
                 if _handle_global_key(event):         continue
                 if event.type == pygame.QUIT:         return None
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     return None
+                self._room_input.handle_event(event)
                 self._slider.handle_event(event)
                 if self._btn_speed.is_clicked(event):
                     self._speed_idx = (self._speed_idx + 1) % len(self.SPEED_OPTIONS)
@@ -607,10 +620,12 @@ class HostSetupMenu:
                     self._mode_idx  = (self._mode_idx  + 1) % len(self._modes)
                 if self._btn_lobby.is_clicked(event):
                     _, scale = self.SPEED_OPTIONS[self._speed_idx]
-                    return self._modes[self._mode_idx], self._slider.value, scale
+                    room_name = self._room_input.text.strip() or f"Host {self._own_ip}"
+                    return self._modes[self._mode_idx], self._slider.value, scale, room_name
                 if self._btn_back.is_clicked(event):  return None
             self.screen.fill(MENU_BG);  _draw_bg(self.screen, self._t)
-            _draw_title(self.screen, "HOST-EINSTELLUNGEN", 72, self._title_f)
+            _draw_title(self.screen, "HOST SETTINGS", 72, self._title_f)
+            self._room_input.draw(self.screen)
             ip_hint = self._ip_lbl.render("Your IP (for the client):", True, C_LABEL)
             ip_val  = self._ip_font.render(f"  {self._own_ip}:54321  ", True, ACCENT)
             box = ip_val.get_rect(center=(SCREEN_W//2, 144))
@@ -677,13 +692,15 @@ class ClientSetupMenu:
     
     def _update_discovered_rooms(self) -> None:
         """Update list of discovered rooms from listener."""
+        self._discovered_rooms = self._listener.get_rooms()
         if not self._listener.is_listening():
-            self._discovered_rooms = self._listener.get_rooms()
+            self._listener.start_discovery(timeout=3.0)
 
     def run(self) -> str | None:
         clock = pygame.time.Clock()
         while True:
             dt = clock.tick(60) / 1000.0;  self._t += dt
+            self.screen = pygame.display.get_surface() or self.screen
             mouse = pygame.mouse.get_pos()
             
             # Periodically check for discovered rooms
@@ -820,6 +837,7 @@ class HostLobby:
 
     def __init__(self, screen: pygame.Surface, mode: int,
                  length: int, speed_scale: float,
+                 room_name: str | None = None,
                  net=None) -> None:
         self.screen      = screen
         self.mode        = mode
@@ -846,9 +864,11 @@ class HostLobby:
         except OSError:
             own_ip = "localhost"
         
-        room_name = f"Host ({own_ip})"
-        self._room_name  = room_name
-        self._broadcaster = RoomBroadcaster(room_name, tcp_port=self.NET_PORT)
+        if room_name and room_name.strip():
+            self._room_name = room_name.strip()
+        else:
+            self._room_name = f"Host ({own_ip})"
+        self._broadcaster = RoomBroadcaster(self._room_name, tcp_port=self.NET_PORT)
         self._broadcaster.start()
 
         cx = SCREEN_W // 2
@@ -865,7 +885,7 @@ class HostLobby:
         self._lobby_timer = 999.0
 
         y0 = SCREEN_H // 2 + 126
-        self._btn_start    = Button(cx, y0,       "  RENNEN STARTEN  ",  accent=(50, 200, 80))
+        self._btn_start    = Button(cx, y0,       "  START RACE  ",  accent=(50, 200, 80))
         self._btn_kick     = Button(cx, y0 + 66,  "  KICK CLIENT  ",     w=240, h=46, accent=(200, 60, 60))
         self._btn_settings = Button(cx, y0 + 126, "  Settings  ",        w=240, h=44)
         self._btn_back     = Button(cx, y0 + 186, "  Main Menu  ",       w=220, h=44)
@@ -877,6 +897,7 @@ class HostLobby:
         clock = pygame.time.Clock()
         while True:
             dt = clock.tick(60) / 1000.0;  self._t += dt
+            self.screen = pygame.display.get_surface() or self.screen
             mouse = pygame.mouse.get_pos()
 
             for event in pygame.event.get():
@@ -1030,6 +1051,9 @@ class HostLobby:
     def _draw(self, mouse: tuple) -> None:
         self.screen.fill(MENU_BG);  _draw_bg(self.screen, self._t)
         _draw_title(self.screen, "HOST LOBBY", 42, self._title_f, ACCENT2)
+        room_txt = self._lbl_f.render(f"Room: {self._room_name}", True, C_LABEL)
+        self.screen.blit(room_txt,
+                         ((SCREEN_W - room_txt.get_width()) // 2, 84))
 
         modes_lbl = {1: "Split Control", 2: "Panic Pilot (Fog)", 3: "PvP Racing"}
         modes_col = {1: (100, 180, 255), 2: ACCENT, 3: ACCENT2}
@@ -1131,6 +1155,7 @@ class ClientLobby:
 
         while True:
             dt = clock.tick(60) / 1000.0;  self._t += dt
+            self.screen = pygame.display.get_surface() or self.screen
             mouse = pygame.mouse.get_pos()
 
             for event in pygame.event.get():
@@ -1408,7 +1433,7 @@ class SettingsScene:
     def _toggle_fullscreen(self) -> None:
         import settings as _s
         _s.FULLSCREEN = not _s.FULLSCREEN
-        pygame.display.toggle_fullscreen()
+        self.screen = _set_display_mode(_s.FULLSCREEN)
         lbl = "  Fullscreen: ON   " if _s.FULLSCREEN else "  Fullscreen: OFF  "
         self._btn_fullscreen.label = lbl
         _s.save_settings()
@@ -1421,6 +1446,7 @@ class SettingsScene:
             dt = clock.tick(60) / 1000.0
             self._t     += dt
             self._test_t = max(0.0, self._test_t - dt)
+            self.screen = pygame.display.get_surface() or self.screen
             mouse = pygame.mouse.get_pos()
 
             for event in pygame.event.get():
@@ -1514,8 +1540,7 @@ def main() -> None:
     pygame.init()
     # pygame.SCALED keeps the 1280×720 logical surface and stretches it to
     # fill the actual window/screen — fixes the "small window in fullscreen" bug.
-    flags = pygame.SCALED | (pygame.FULLSCREEN if FULLSCREEN else 0)
-    screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), flags)
+    screen = _set_display_mode(FULLSCREEN)
     pygame.display.set_caption("Panic Pilot")
 
     # Initialize pygame.scrap for clipboard support (must be after display.set_mode)
@@ -1561,16 +1586,18 @@ def main() -> None:
             result   = settings.run(prefill=last_host_settings)
             if result is None:
                 continue
-            mode, length, speed_scale = result
+            mode, length, speed_scale, room_name = result
             last_host_settings = {
                 "mode": mode, "length": length,
                 "speed_idx": settings._speed_idx,
+                "room_name": room_name,
             }
             # ── Phase 11.1: Lobby-Settings-Schleife mit persistentem Netz ────
             existing_net = None
             while True:
                 if _sm: _sm.play_music("menu")
                 lobby   = HostLobby(screen, mode, length, speed_scale,
+                                    room_name=room_name,
                                     net=existing_net)
                 outcome = lobby.run()
 
@@ -1579,7 +1606,8 @@ def main() -> None:
                     existing_net = lobby._net
                     result2 = HostSetupMenu(screen).run(
                         prefill={"mode": mode, "length": length,
-                                 "speed_idx": last_host_settings.get("speed_idx", 1)})
+                                 "speed_idx": last_host_settings.get("speed_idx", 1),
+                                 "room_name": last_host_settings.get("room_name", "")})
                     if result2 is None:
                         continue
                     mode, length, speed_scale = result2

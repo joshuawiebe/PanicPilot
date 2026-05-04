@@ -117,7 +117,7 @@ class ClientGame:
         self._update_caption()
 
     def _update_caption(self) -> None:
-        modes = {1: "HELFER", 2: "NAVIGATOR", 3: "PvP AUTO B"}
+        modes = {1: "HELPER", 2: "NAVIGATOR", 3: "PvP AUTO B"}
         pygame.display.set_caption(
             f"Panic Pilot – CLIENT [{modes.get(self._mode,'?')}] | Host: {self._host_ip}")
 
@@ -204,7 +204,7 @@ class ClientGame:
             attempt = 0
             while self.running:
                 attempt += 1
-                self._draw_waiting_screen(f"Verbinde … (Versuch {attempt})")
+                self._draw_waiting_screen(f"Connecting ... (Attempt {attempt})")
                 if not self._net.connect(timeout=CONNECT_TIMEOUT):
                     self._drain_events(CONNECT_RETRY_INTERVAL)
                     continue
@@ -531,8 +531,9 @@ class ClientGame:
     # ── Rendering ─────────────────────────────────────────────────────────────
 
     def _draw(self) -> None:
+        self.screen = pygame.display.get_surface() or self.screen
         if self.car is None or self.track is None:
-            self._draw_waiting_screen("Warte auf Daten …")
+            self._draw_waiting_screen("Waiting for map data …")
             return
 
         zoom         = self.camera.zoom
@@ -571,7 +572,7 @@ class ClientGame:
         for brang in self.boomerangs:
             brang.draw(self.screen, off_x, off_y, zoom)
 
-        # Lokale Pings (Navigator)
+        # Local pings (navigator)
         for wx, wy, timer in self._local_pings:
             sx, sy = self.camera.w2s(wx, wy)
             frac   = max(0.0, timer / LOCAL_PING_DURATION)
@@ -725,13 +726,13 @@ class ClientGame:
         cy = SCREEN_H // 2 - 80
         if self._mode == 3:
             if self._winner == "host":
-                txt, color = "HOST GEWINNT!", (210, 45, 45)
+                txt, color = "HOST WINS!", (210, 45, 45)
             elif self._winner == "client":
-                txt, color = "CLIENT GEWINNT!", (30, 100, 210)
+                txt, color = "CLIENT WINS!", (30, 100, 210)
             else:
-                txt, color = "KEIN SPRIT!", ORANGE
+                txt, color = "OUT OF FUEL!", ORANGE
         else:
-            txt, color = (("ZIEL!", YELLOW) if self._winner else ("KEIN SPRIT!", ORANGE))
+            txt, color = (("FINISH!", YELLOW) if self._winner else ("OUT OF FUEL!", ORANGE))
         lbl = self._big_font.render(txt, True, color)
         self.screen.blit(lbl, ((SCREEN_W - lbl.get_width()) // 2, cy))
         cy += lbl.get_height() + 10
@@ -739,7 +740,7 @@ class ClientGame:
         secs  = int(self._elapsed) % 60
         cs    = int((self._elapsed % 1) * 100)
         t_lbl = self._mid_font.render(
-            f"Zeit: {mins:02d}:{secs:02d}.{cs:02d}", True, WHITE)
+            f"Time: {mins:02d}:{secs:02d}.{cs:02d}", True, WHITE)
         self.screen.blit(t_lbl, ((SCREEN_W - t_lbl.get_width()) // 2, cy))
         cy += t_lbl.get_height() + 24
         m_lbl = self._mid_font.render("[M]  Main Menu", True, YELLOW)
@@ -753,9 +754,9 @@ class ClientGame:
         m = self._mode_font.render(
             modes.get(self._mode, ""), True, colors.get(self._mode, WHITE))
         self.screen.blit(m, ((SCREEN_W - m.get_width()) // 2, 10))
-        hints = {1: "W/S=Gas/Bremse",
-                 2: "W/S  KLICK=Ping  O/P=Zoom",
-                 3: "W/A/S/D = Eigenes Auto"}
+        hints = {1: "W/S = Throttle / Brake",
+                 2: "W/S = Throttle | Click = Ping | O/P = Zoom",
+                 3: "W/A/S/D = Own Car"}
         h = self._status_font.render(hints.get(self._mode, ""), True, CYAN)
         self.screen.blit(h, (12, SCREEN_H - 38))
 

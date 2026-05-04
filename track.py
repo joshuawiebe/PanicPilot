@@ -390,7 +390,7 @@ class TrackTile:
         pygame.draw.line(s, YELLOW, (0, ry + rh), (T, ry + rh), 3)
         try:
             font = pygame.font.SysFont("Arial", 52, bold=True)
-            lbl  = font.render("ZIEL", True, YELLOW)
+            lbl  = font.render("FINISH", True, YELLOW)
             s.blit(lbl, (T//2 - lbl.get_width()//2, ry + rh//2 - lbl.get_height()//2))
         except Exception:
             pass

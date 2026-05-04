@@ -255,6 +255,7 @@ class HostGame(Game):
     # ─── draw ────────────────────────────────────────────────────────────────
 
     def draw(self) -> None:
+        self.screen = pygame.display.get_surface() or self.screen
         s = self.cars[0].state
         self.draw_world(self.screen)
         if self.mode == 2:
@@ -302,7 +303,7 @@ class HostGame(Game):
             hint_txt = "[R]=Restart  [N]=Switch Mode  [M]=Menu  [S]=Settings"
             hint_color = CYAN
         else:
-            hint_txt  = "A/D=Lenken  M=Modus  P=Pause  R=Reset"
+            hint_txt  = "A/D=Steer  M=Mode  P=Pause  R=Reset"
             hint_color = GRAY
         hint = self._status_font.render(hint_txt, True, hint_color)
         self.screen.blit(hint, (12, SCREEN_H - 38))

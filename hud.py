@@ -48,16 +48,16 @@ class HUD:
 
         fuel_pct = fuel / FUEL_MAX
         if fuel <= 0:
-            self._draw_centered_message(surface, "KEIN SPRIT!", ORANGE,
+            self._draw_centered_message(surface, "OUT OF FUEL!", ORANGE,
                                         self._font_big,
                                         y=SCREEN_H // 2 - 30)
-            self._draw_centered_message(surface, "Drücke R zum Neustart",
+            self._draw_centered_message(surface, "Press R to restart",
                                         WHITE, self._font_md,
                                         y=SCREEN_H // 2 + 30)
         elif fuel_pct < 0.25:
-            # Blinken
+            # Flashing low fuel warning
             if int(elapsed * 2) % 2 == 0:
-                self._draw_centered_message(surface, "NIEDRIGER KRAFTSTOFF!",
+                self._draw_centered_message(surface, "LOW FUEL!",
                                             RED, self._font_warn,
                                             y=SCREEN_H - 62)
 
@@ -100,7 +100,7 @@ class HUD:
 
         # ── Tankanzeige ───────────────────────────────────────────────────────
         fuel_pct = max(0.0, fuel / FUEL_MAX)
-        fuel_lbl = self._font_sm.render("TANK", True, (150, 160, 180))
+        fuel_lbl = self._font_sm.render("FUEL", True, (150, 160, 180))
         surface.blit(fuel_lbl, (px + 12, py + 70))
 
         fb_x = px + 58
@@ -128,7 +128,7 @@ class HUD:
         secs  = int(elapsed) % 60
         csecs = int((elapsed % 1) * 100)
         timer_str = f"{mins:02d}:{secs:02d}.{csecs:02d}"
-        t_lbl = self._font_sm.render("ZEIT", True, (150, 160, 180))
+        t_lbl = self._font_sm.render("TIME", True, (150, 160, 180))
         t_val = self._font_lg.render(timer_str, True, WHITE)
         surface.blit(t_lbl, (px + 12,  py + 90))
         surface.blit(t_val, (px + 55,  py + 88))
