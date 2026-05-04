@@ -146,32 +146,35 @@ python main.py
 
 ## Controls
 
-| Key | Action |
-|-----|--------|
-| A / D | Steer left / right (host car) |
-| R | Restart race |
-| M | Return to main menu (post-race) |
-| N | Request mode switch (post-race, requires navigator confirmation) |
-| P | Pause / unpause |
-| F11 | Toggle fullscreen (works everywhere) |
-| ESC | Back / leave |
-| Click (Mode 2) | Place navigator ping on map |
-| Y / N | Accept / decline mode switch request (navigator) |
+| Key            | Action                                                           |
+| -------------- | ---------------------------------------------------------------- |
+| A / D          | Steer left / right (host car)                                    |
+| R              | Restart race                                                     |
+| M              | Return to main menu (post-race)                                  |
+| N              | Request mode switch (post-race, requires navigator confirmation) |
+| P              | Pause / unpause                                                  |
+| F11            | Toggle fullscreen (works everywhere)                             |
+| ESC            | Back / leave                                                     |
+| Click (Mode 2) | Place navigator ping on map                                      |
+| Y / N          | Accept / decline mode switch request (navigator)                 |
 
 ---
 
 ## TODOs
 
-- [x] Add connection history and LAN room discovery (UDP). **✅ DONE**
+- [ ] Add connection history and LAN room discovery (UDP) and a username can be set so for other players there is $username's room listed.
 - [x] Fix copy & paste for IP addresses (cross-platform). **✅ DONE**
 - [x] Implement engine (motor) sound. **✅ DONE** — procedural synthesis, RPM-reactive
-- [x] Add ping visualization in fog (Mode 2). **✅ DONE** — ripple animation, off-screen arrows, urgency colors
-- [x] Fullscreen mode with correct scaling. **✅ DONE** — F11 shortcut, smooth upscaling, persisted setting
-- [x] Mode switching while connected. **✅ DONE** — post-race, requires navigator confirmation
-- [x] Translate everything to English. **✅ DONE**
+- [x] Add ping visualization in fog (Mode 2). **✅ DONE** — ripple animation, off-screen arrows, urgency colors --> Yes ping rtt is there but i do not need this i want a
+- [ ] Fullscreen mode with correct scaling. **✅ DONE** — F11 shortcut, smooth upscaling, persisted setting but it is not at may resolution and does not work when it starts the game (only in the menu)
+- [ ] Mode switching while connected. The Modes cannot be change will playing only after someone wins
+- [ ] Translate everything to English.
 - [x] Client returns to lobby/menu after being kicked. **✅ DONE** — ESC dismisses kick screen
 - [ ] Upload Ben's documentation.
 - [ ] GitHub Actions release with bundled executable.
+- [ ] Markers in the Mode 2 Panic Pilot not work so the Navigator can't make mouse clicks to make a light maker or maybe you can call it laiser pointer which lights up and shows in the darkness where to drive to stay on the map
+- [ ] Fullscreen is ingame not working and not at high resolution
+- [ ]
 
 ### Currently working on
 
