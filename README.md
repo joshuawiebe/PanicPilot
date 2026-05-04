@@ -175,6 +175,7 @@ python main.py
 - [ ] Markers in the Mode 2 Panic Pilot not work so the Navigator can't make mouse clicks to make a light maker or maybe you can call it laiser pointer which lights up and shows in the darkness where to drive to stay on the map
 - [ ] Fullscreen is ingame not working and not at high resolution
 - [ ]
+- [x] GitHub Actions release with bundled executable. **✅ DONE** — PyInstaller spec + `.github/workflows/release.yml`; push a `vX.Y.Z` tag to trigger a multi-platform release (Windows / macOS / Linux)
 
 ### Currently working on
 
