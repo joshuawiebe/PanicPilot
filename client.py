@@ -198,48 +198,45 @@ class ClientGame:
         """
         MAP_WAIT_TIMEOUT = 5.0
 
-        if self._net.is_connected():
-            if not self._lobby_ready_sent:
-                # Standalone-Lobby oder Sicherheits-Fallback
-                print("DEBUG: Client sending ready_for_map in _connect_loop (fallback)")
-                self._net.send_ready_for_map()
-            else:
-                print("DEBUG: Client waiting for map (ready_for_map already sent)")
-            deadline = time.time() + MAP_WAIT_TIMEOUT
-            while self.running and time.time() < deadline:
-                self._draw_waiting_screen("Waiting for track data …")
-                m = self._net.get_map()
-                if m:
-                    print("DEBUG: Client received map – building track …")
-                    self._build_from_map(m)
-                    return True
-                self._drain_events(0.08)
-            print("DEBUG: Client map timeout after", MAP_WAIT_TIMEOUT, "s")
+        # === PHASE 1: Establish connection (if not already connected from lobby) ===
+        if not self._net.is_connected():
+            # Standalone mode: attempt to connect with retries
+            attempt = 0
+            while self.running:
+                attempt += 1
+                self._draw_waiting_screen(f"Verbinde … (Versuch {attempt})")
+                if not self._net.connect(timeout=CONNECT_TIMEOUT):
+                    self._drain_events(CONNECT_RETRY_INTERVAL)
+                    continue
+                print("DEBUG: Standalone connect successful, waiting for handshake")
+                break
+            
+            if not self._net.is_connected():
+                self._draw_waiting_screen("Timed out – returning to lobby …")
+                pygame.time.wait(1800)
+                return False
+
+        # === PHASE 2: Wait for map data (connection established) ===
+        if not self._lobby_ready_sent:
+            # Standalone-Lobby oder Sicherheits-Fallback
+            print("DEBUG: Client sending ready_for_map in _connect_loop (fallback)")
+            self._net.send_ready_for_map()
+        else:
+            print("DEBUG: Client waiting for map (ready_for_map already sent)")
+        
+        deadline = time.time() + MAP_WAIT_TIMEOUT
+        while self.running and time.time() < deadline:
+            self._draw_waiting_screen("Waiting for track data …")
+            m = self._net.get_map()
+            if m:
+                print("DEBUG: Client received map – building track …")
+                self._build_from_map(m)
+                return True
+            self._drain_events(0.08)
+        
+        print("DEBUG: Client map timeout after", MAP_WAIT_TIMEOUT, "s")
         self._draw_waiting_screen("Timed out – returning to lobby …")
         pygame.time.wait(1800)
-        return False
-
-        attempt = 0
-        while self.running:
-            attempt += 1
-            self._draw_waiting_screen(f"Verbinde … (Versuch {attempt})")
-            if not self._net.connect(timeout=CONNECT_TIMEOUT):
-                self._drain_events(CONNECT_RETRY_INTERVAL)
-                continue
-            print("DEBUG: Standalone connect successful, sending ready_for_map")
-            self._net.send_ready_for_map()
-            deadline = time.time() + MAP_WAIT_TIMEOUT
-            while self.running and time.time() < deadline:
-                self._draw_waiting_screen("Waiting for track data …")
-                m = self._net.get_map()
-                if m:
-                    print("DEBUG: Client received map – building track …")
-                    self._build_from_map(m)
-                    return True
-                self._drain_events(0.08)
-            print("DEBUG: Standalone map timeout, retrying connection")
-            self._net.shutdown()
-            self._net = ClientConnection(self._host_ip, NET_PORT)
         return False
 
     def _drain_events(self, seconds: float) -> None:
@@ -434,8 +431,7 @@ class ClientGame:
         target_zoom = max(0.35, min(1.0, 600.0 / max(dist, 600.0)))
         self.camera.zoom += (target_zoom - self.camera.zoom) * 0.05
         # Kamera verfolgt eigenes Auto (B)
-        self.camera.update(s_b.state.x if hasattr(s_b, 'state') else s_b.x,
-                           s_b.state.y if hasattr(s_b, 'state') else s_b.y, dt)
+        self.camera.update(s_b.x, s_b.y, dt)
 
     # ── State übernehmen ─────────────────────────────────────────────────────
 
