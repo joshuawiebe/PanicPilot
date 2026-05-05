@@ -1415,17 +1415,6 @@ class SettingsScene:
         init_sfx   = getattr(_s, "SFX_VOLUME",   80)
         init_username = getattr(_s, "USERNAME", "")
 
-        try:
-            display_info = pygame.display.Info()
-            self._native_w = display_info.current_w
-            self._native_h = display_info.current_h
-        except Exception:
-            self._native_w = 1920
-            self._native_h = 1080
-
-        _s.DISPLAY_W = self._native_w
-        _s.DISPLAY_H = self._native_h
-
         self._sl_music = Slider(cx, SCREEN_H // 2 - 106,
                                 "♪  Music Volume", 0, 100, init_music)
         self._sl_sfx   = Slider(cx, SCREEN_H // 2 - 26,
@@ -1440,16 +1429,10 @@ class SettingsScene:
         self._btn_test  = Button(cx, SCREEN_H // 2 + 114,
                                  "  Play Test Sound  ", w=280, h=46,
                                  accent=(0, 195, 100))
-        self._btn_fullscreen = Button(cx, SCREEN_H // 2 + 172,
-                                      "  Fullscreen: OFF  ", w=280, h=46,
-                                      accent=(60, 100, 180))
-        self._btn_back  = Button(cx, SCREEN_H // 2 + 232,
+        self._btn_back  = Button(cx, SCREEN_H // 2 + 172,
                                  "  Back  ", w=200, h=44)
         self._test_hint = ""
         self._test_t    = 0.0
-
-        fs = getattr(_s, "FULLSCREEN", False)
-        self._btn_fullscreen.label = "  Fullscreen: ON   " if fs else "  Fullscreen: OFF  "
 
     # ── Main Loop ─────────────────────────────────────────────────────────────
 
@@ -1482,8 +1465,6 @@ class SettingsScene:
                         _sound_mod.get().play_pickup_fuel()
                     self._test_hint = "▶ Test sound ..."
                     self._test_t    = 1.2
-                if self._btn_fullscreen.is_clicked(event):
-                    self._toggle_fullscreen()
                 if self._btn_back.is_clicked(event):
                     self._apply_volumes()
                     import settings as _s
@@ -1492,6 +1473,14 @@ class SettingsScene:
                     return
 
             self._draw(mouse)
+
+    def _apply_volumes(self) -> None:
+        import settings as _s
+        _s.MUSIC_VOLUME = int(self._sl_music.value)
+        _s.SFX_VOLUME   = int(self._sl_sfx.value)
+        if _sound_mod and _sound_mod.get():
+            _sound_mod.get().set_music_volume(_s.MUSIC_VOLUME)
+            _sound_mod.get().set_sfx_volume(_s.SFX_VOLUME)
 
     def _draw(self, mouse: tuple) -> None:
         self.screen.fill(MENU_BG)
@@ -1525,9 +1514,6 @@ class SettingsScene:
 
         import settings as _s
         self._btn_test.draw(self.screen, mouse)
-        self._btn_fullscreen.label = ("  Fullscreen: ON   " if getattr(_s, "FULLSCREEN", False)
-                                      else "  Fullscreen: OFF  ")
-        self._btn_fullscreen.draw(self.screen, mouse)
         self._btn_back.draw(self.screen, mouse)
 
         if self._test_hint and self._test_t > 0:
