@@ -1,8 +1,8 @@
 # =============================================================================
-#  walls.py  –  Panic Pilot | Wand- und Sperr-Zonen System
+#  walls.py  –  Panic Pilot | Wall and Blocked Zones System
 # =============================================================================
 #
-#  Physik-Logik (Weltkoordinaten, kamera-unabhängig):
+#  Physics logic (world coordinates, camera-independent):
 #    collides(wx, wy, radius) → bool
 #    resolve(wx, wy, speed, radius) → (wx, wy, speed)
 #
@@ -10,7 +10,7 @@
 #    draw(surface, off_x, off_y, zoom)
 #    screen_x = world_x * zoom + off_x
 #    screen_y = world_y * zoom + off_y
-#    sizes (width, height, radius) werden ebenfalls mit zoom skaliert.
+#    sizes (width, height, radius) are also scaled with zoom.
 # =============================================================================
 from __future__ import annotations
 import math
@@ -34,7 +34,7 @@ class BaseWall:
 
 
 class ScreenEdgeWall(BaseWall):
-    """Bildschirm-Rand (nur wenn screen_edge=True in WallSystem). Physik in Weltkoord."""
+    """Screen edge (only when screen_edge=True in WallSystem). Physics in world coords."""
 
     def __init__(self, margin: int = 20) -> None:
         self.margin = margin
@@ -66,14 +66,14 @@ class RectWall(BaseWall):
 
     def __init__(self, x: float, y: float, w: float, h: float,
                  color: tuple = GRAY, visible: bool = True) -> None:
-        # Weltkoordinaten der Wand
+        # World coordinates of the wall
         self.wx      = float(x)
         self.wy      = float(y)
         self.ww      = float(w)
         self.wh      = float(h)
         self.color   = color
         self.visible = visible
-        # pygame.Rect nur für Physik (Weltkoord., unveränderlich)
+        # pygame.Rect for physics only (world coords, immutable)
         self._phys_rect = pygame.Rect(int(x), int(y), int(w), int(h))
 
     def collides(self, x: float, y: float, radius: float) -> bool:
@@ -100,7 +100,7 @@ class RectWall(BaseWall):
              off_x: int = 0, off_y: int = 0, zoom: float = 1.0) -> None:
         if not self.visible:
             return
-        # Weltkoordinaten + Dimensionen mit zoom skalieren
+        # Scale world coordinates + dimensions with zoom
         sx = int(self.wx * zoom) + off_x
         sy = int(self.wy * zoom) + off_y
         sw = max(1, int(self.ww * zoom))
@@ -110,7 +110,7 @@ class RectWall(BaseWall):
 
 
 class CircleWall(BaseWall):
-    """Kreisförmiges Hindernis in WELTKOORDINATEN."""
+    """Circular obstacle in WORLD COORDINATES."""
 
     def __init__(self, cx: float, cy: float, radius: float,
                  color: tuple = RED, visible: bool = True) -> None:
@@ -139,7 +139,7 @@ class CircleWall(BaseWall):
              off_x: int = 0, off_y: int = 0, zoom: float = 1.0) -> None:
         if not self.visible:
             return
-        # Position und Radius mit zoom skalieren
+        # Scale position and radius with zoom
         sx = int(self.cx * zoom) + off_x
         sy = int(self.cy * zoom) + off_y
         sr = max(1, int(self.radius * zoom))
@@ -149,8 +149,8 @@ class CircleWall(BaseWall):
 
 class WallSystem:
     """
-    Verwaltet alle aktiven Wände einer Szene.
-    screen_edge=False für Welt-Koordinaten-Spiele (Tile-Track).
+    Manages all active walls in a scene.
+    screen_edge=False for world-coordinate games (tile track).
     """
 
     def __init__(self, screen_edge: bool = True) -> None:
@@ -174,7 +174,7 @@ class WallSystem:
 
     def draw(self, surface: pygame.Surface,
              off_x: int = 0, off_y: int = 0, zoom: float = 1.0) -> None:
-        """Alle Wände zoom-korrekt zeichnen."""
+        """Draw all walls with correct zoom."""
         for wall in self._walls:
             wall.draw(surface, off_x, off_y, zoom)
         if self._screen_edge is not None:

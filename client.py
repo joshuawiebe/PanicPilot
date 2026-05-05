@@ -2,13 +2,13 @@
 #  client.py  –  Panic Pilot | Client / Navigator (Phase 5.3)
 # =============================================================================
 #
-#  Phase 5.3 Änderungen:
-#    - Pause-Sync:     _paused aus Paket → Overlay + Physik-Stopp
-#    - Adaptive Kamera Modus 3: identischer Zoom-Out wie Host (_update_camera_pvp)
-#    - Pickup-Sync:    apply_net_dict() statt direkter Feldschreibung
-#    - Props:          PropManager wird nach Map-Aufbau erstellt
-#    - Theme bg_fill:  Hintergrundfarbe aus Theme
-#    - Start-Pos:      side_offset (nebeneinander, passend zu game.py)
+#  Phase 5.3 changes:
+#    - Pause sync:     _paused from packet → overlay + physics stop
+#    - Adaptive camera Mode 3: identical zoom-out as host (_update_camera_pvp)
+#    - Pickup sync:    apply_net_dict() instead of direct field writing
+#    - Props:          PropManager created after map construction
+#    - Theme bg_fill:  background color from theme
+#    - Start pos:      side_offset (side-by-side, matching game.py)
 # =============================================================================
 from __future__ import annotations
 import math, sys, time, logging
@@ -71,7 +71,7 @@ class ClientGame:
         self.clock   = pygame.time.Clock()
         self.running = True
 
-        # Klassen beim Start aus der Lobby
+        # Classes at startup from lobby
         self._car_class_host   = car_class_host
         self._car_class_client = car_class_client
         self._host_room_name   = host_room_name
@@ -80,7 +80,7 @@ class ClientGame:
         self.track:     Optional[Track]       = None
         self.car:       Optional[Car]         = None   # Auto A (Host)
         self.car_b:     Optional[Car]         = None   # Auto B (Client, Modus 3)
-        self.props:     Optional[PropManager] = None   # Dekorative Props
+        self.props:     Optional[PropManager] = None   # Decorative props
         self.hud:       Optional[HUD]         = None
         self.walls     = WallSystem(screen_edge=False)
         self.particles = ParticleSystem()
@@ -90,7 +90,7 @@ class ClientGame:
         self.item_boxes: list[ItemBox]     = []
         self.boomerangs: list              = []   # GreenBoomerang | RedBoomerang
         self.entity_particles = EntityParticleSystem()
-        self._client_inventory: str | None = None   # Inventar aus Host-Paket
+        self._client_inventory: str | None = None   # Inventory from host packet
         self.camera    = Camera()
 
         self._flash_surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
@@ -113,7 +113,7 @@ class ClientGame:
         self._return_to_lobby  = False   # Phase 11
         self._lobby_initiator  = ""      # "self" | "remote"
         self._pause_btn_rects: dict = {}
-        self._lobby_ready_sent = False   # Phase 11.3: ready_for_map schon gesendet?
+        self._lobby_ready_sent = False   # Phase 11.3: ready_for_map already sent?
         
         self._pending_mode_request: int | None = None
         self._mode_request_timer:   float      = 0.0
@@ -148,12 +148,12 @@ class ClientGame:
         pygame.display.set_caption(
             f"Panic Pilot – CLIENT [{modes.get(self._mode,'?')}] | Host: {self._host_ip}")
 
-    # ── Map aufbauen ─────────────────────────────────────────────────────────
+    # ── Build map ───────────────────────────────────────────────────────
 
     def _build_from_map(self, map_data: dict) -> None:
         self.track = Track.from_dict(map_data)
 
-        # Bug-Fix Phase 9: game_mode im Map-Paket → pvp_mode korrekt setzen
+        # Bug fix Phase 9: game_mode in map packet → set pvp_mode correctly
         game_mode = int(map_data.get("game_mode", self._mode))
         pvp = (game_mode == 3)
 
@@ -166,7 +166,7 @@ class ClientGame:
         side_y      = math.sin(rad)
         side_offset = 36
 
-        # Klassen aus Lobby-Auswahl
+        # Classes from lobby selection
         cls0 = self._car_class_host
         cls1 = self._car_class_client
         cs0  = CAR_CLASSES.get(cls0, CAR_CLASSES["balanced"])
@@ -206,22 +206,22 @@ class ClientGame:
         self.hud = HUD()
         self.camera.snap(sx, sy)
 
-        # Phase 5.3: Props erzeugen (deterministisch, gleicher seed wie Host)
+        # Phase 5.3: Generate props (deterministic, same seed as host)
         prop_seed = hash(tuple(t.tile_type for t in self.track.tiles)) % 99999
         self.props = PropManager.generate(
             self.track, theme=self.track.theme, seed=prop_seed)
 
-    # ── Verbindungs-Loop ─────────────────────────────────────────────────────
+    # ── Connection loop ─────────────────────────────────────────────────
 
     def _connect_loop(self) -> bool:
         """
         Phase 11.3:
-        Wenn bereits verbunden (aus Lobby):
-          - ready_for_map wurde bereits in der Lobby-Loop gesendet
-            (self._lobby_ready_sent=True) → NICHT nochmals senden.
-          - Nur auf Kartendaten warten (max. MAP_WAIT_TIMEOUT s).
-          - Bei Timeout → False.
-        Sonst (standalone): Verbinden + ready_for_map senden + warten.
+        If already connected (from lobby):
+          - ready_for_map was already sent in the lobby loop
+            (self._lobby_ready_sent=True) → do NOT send again.
+          - Just wait for map data (max MAP_WAIT_TIMEOUT s).
+          - On timeout → False.
+        Otherwise (standalone): connect + send ready_for_map + wait.
         """
         MAP_WAIT_TIMEOUT = 5.0
 
@@ -245,7 +245,7 @@ class ClientGame:
 
         # === PHASE 2: Wait for map data (connection established) ===
         if not self._lobby_ready_sent:
-            # Standalone-Lobby oder Sicherheits-Fallback
+            # Standalone lobby or safety fallback
             print("DEBUG: Client sending ready_for_map in _connect_loop (fallback)")
             self._net.send_ready_for_map()
         else:
@@ -276,11 +276,11 @@ class ClientGame:
                     self.running = False
             pygame.time.wait(80)
 
-    # ── Haupt-Loop ────────────────────────────────────────────────────────────
+            # ── Main loop ────────────────────────────────────────────────────────────
 
     def run(self) -> None:
         if not self._connect_loop():
-            # Phase 11.2: Timeout oder Verbindungsfehler → zurück zur Lobby
+            # Phase 11.2: Timeout or connection error → return to lobby
             self._return_to_lobby = True
             return
 
@@ -294,7 +294,7 @@ class ClientGame:
             if len(self._frame_times) > 60:  # Keep last 60 frames
                 self._frame_times.pop(0)
             
-            # Update latency Every 0.5 seconds (estimate from frame variance)
+                # Update latency every 0.5 seconds (estimate from frame variance)
             self._last_latency_update += dt
             if self._last_latency_update >= 0.5:
                 if len(self._frame_times) > 10:
@@ -305,7 +305,7 @@ class ClientGame:
                     self._estimated_latency_ms = int(min(500, max(20, variance / 2)))
                 self._last_latency_update = 0.0
 
-            # ── Events ───────────────────────────────────────────────────────
+            # ── Events ────────────────────────────────────────────────────────
             for event in pygame.event.get():
                 if _main_mod and _main_mod._handle_global_key(event):
                     continue
@@ -355,7 +355,7 @@ class ClientGame:
                 pygame.time.wait(60)
                 continue
 
-            # Phase 11: Host will zurück zur Lobby?
+            # Phase 11: Host wants to return to lobby?
             if self._net.host_wants_lobby():
                 self._do_return_to_lobby()
                 break
@@ -371,7 +371,7 @@ class ClientGame:
             if m:
                 self._build_from_map(m)
 
-            # Input senden (auch bei Pause – Server entscheidet)
+            # Send input (even when paused – server decides)
             send_timer += dt
             if send_timer >= 1.0 / FPS:
                 send_timer = 0.0
@@ -389,27 +389,27 @@ class ClientGame:
                 self._pending_use_item    = False
                 self._net.send_input(inp.to_dict())
 
-            # State empfangen
+            # Receive state
             packet = self._net.get_state()
             if packet:
                 self._apply_state(packet)
 
-            # ── Phase 5.3: Pause-Guard ───────────────────────────────────────
-            # Bei Pause: Kamera + Partikel einfrieren, nur zeichnen
+            # ── Phase 5.3: Pause guard ───────────────────────────────────────
+            # When paused: freeze camera + particles, only draw
             if not self._paused:
-                # Kamera
+                # Camera
                 if self.car:
                     if self._mode == 3 and self.car_b:
-                        # Phase 5.3: Adaptive Kamera identisch zum Host
+                        # Phase 5.3: Adaptive camera identical to host
                         self._update_camera_pvp(dt)
                     elif self._mode == 2:
-                        # Navigator: zoom frei, verfolgt Auto A
+                        # Navigator: free zoom, follows car A
                         self.camera.update(self.car.state.x, self.car.state.y, dt)
                     else:
                         self.camera.zoom = 1.0
                         self.camera.update(self.car.state.x, self.car.state.y, dt)
 
-                # Partikel (Auto A – Host)
+                # Particles (car A – host)
                 if self.car:
                     s   = self.car.state
                     rad = math.radians(s.angle)
@@ -444,22 +444,22 @@ class ClientGame:
 
             self._draw()
 
-        # Phase 11: Client hat Lobby initiiert → Host informieren
+        # Phase 11: Client initiated lobby → inform host
         if self._return_to_lobby and getattr(self, "_lobby_initiator", "") != "remote":
             try: self._net.send_back_to_lobby()
             except Exception: pass
-        # Phase 11.2: Flags nullen damit nächste Startrunde sauber ist
+        # Phase 11.2: Zero out flags so next start round is clean
         if self._net.is_connected():
             self._net.reset_lobby_flags()
         if self._owns_net:
             self._net.shutdown()
 
-    # ── Adaptive Kamera PvP (Phase 5.3) ──────────────────────────────────────
+    # ── Adaptive camera PvP (Phase 5.3) ───────────────────────────────────
 
     def _update_camera_pvp(self, dt: float) -> None:
         """
-        Identische Zoom-Logik wie Host._update_camera_pvp in game.py.
-        Verfolgt Auto B (eigenes Auto), zoomt heraus wenn Abstand zu Auto A groß.
+        Identical zoom logic as Host._update_camera_pvp in game.py.
+        Follows car B (own car), zooms out when distance to car A is large.
         """
         if self.car is None or self.car_b is None:
             return
@@ -468,10 +468,10 @@ class ClientGame:
         dist        = math.hypot(s_a.x - s_b.x, s_a.y - s_b.y)
         target_zoom = max(0.35, min(1.0, 600.0 / max(dist, 600.0)))
         self.camera.zoom += (target_zoom - self.camera.zoom) * 0.05
-        # Kamera verfolgt eigenes Auto (B)
+        # Camera follows own car (B)
         self.camera.update(s_b.x, s_b.y, dt)
 
-    # ── State übernehmen ─────────────────────────────────────────────────────
+    # ── Apply state ──────────────────────────────────────────────────────
 
     def _apply_state(self, packet: dict) -> None:
         if self.car is None:
@@ -489,7 +489,7 @@ class ClientGame:
         self._countdown = float(packet.get("countdown", self._countdown))
         self._go_timer  = float(packet.get("go_timer",  self._go_timer))
 
-        # ── Phase 5.3: Pause-Sync ────────────────────────────────────────────
+                    # ── Phase 5.3: Pause sync ───────────────────────────────────────
         self._paused = bool(packet.get("paused", False))
 
         hf = float(packet.get("fuel_flash", 0.0))
@@ -499,7 +499,7 @@ class ClientGame:
         new_mode = int(packet.get("mode", self._mode))
         if new_mode != self._mode:
             self._mode = new_mode
-            # Bug-Fix: pvp_mode auf allen Entitäten aktualisieren
+                # Bug fix: update pvp_mode on all entities
             pvp = (new_mode == 3)
             for obj in (*self.canisters, *self.boosts, *self.oils, *self.item_boxes):
                 obj.set_pvp_mode(pvp)
@@ -513,7 +513,7 @@ class ClientGame:
                 self._countdown = 3.0
                 self._go_timer = 0.0
 
-        # Auto B (Modus 3)
+        # Car B (Mode 3)
         if "car1" in packet and self.car_b:
             c1 = packet["car1"]
             self.car_b.state.x     = float(c1.get("x",     self.car_b.state.x))
@@ -522,7 +522,7 @@ class ClientGame:
             self.car_b.state.speed = float(c1.get("speed", self.car_b.state.speed))
             self.car_b.state.fuel  = float(c1.get("fuel",  self.car_b.state.fuel))
 
-        # Pickup-Sync: collected_by für alle drei Entitätstypen
+        # Pickup sync: collected_by for all three entity types
         for i, cd in enumerate(packet.get("canisters", [])):
             if i < len(self.canisters):
                 self.canisters[i].apply_net_dict(cd)
@@ -533,7 +533,7 @@ class ClientGame:
             if i < len(self.oils):
                 self.oils[i].apply_net_dict(od)
             else:
-                # Dynamisch abgelegter Ölfleck vom Host – neu anlegen
+                # Dynamically placed oil slick from host – create new
                 new_oil = OilSlick(0.0, 0.0, slick_id=i)
                 new_oil.apply_net_dict(od)
                 self.oils.append(new_oil)
@@ -541,9 +541,9 @@ class ClientGame:
             if i < len(self.item_boxes):
                 self.item_boxes[i].apply_net_dict(xd)
 
-        # Boomerang sync – host-autoritativ
+        # Boomerang sync – host-authoritative
         net_brangs = packet.get("boomerangs", [])
-        # Fehlende Einträge anlegen
+        # Create missing entries
         while len(self.boomerangs) < len(net_brangs):
             d   = net_brangs[len(self.boomerangs)]
             cls = GreenBoomerang if d.get("kind") == "green" else RedBoomerang
@@ -554,14 +554,14 @@ class ClientGame:
         for i, d in enumerate(net_brangs):
             if i < len(self.boomerangs):
                 self.boomerangs[i].apply_net_dict(d)
-        # Inaktive entfernen
+        # Remove inactive
         self.boomerangs = [b for b in self.boomerangs if b.active]
-        # Inventar-Sync: Host ist autoritativ
+        # Inventory sync: host is authoritative
         inv_key = "car1_inv" if self._mode == 3 else "car0_inv"
         raw_inv = packet.get(inv_key, "")
         self._client_inventory = raw_inv if raw_inv else None
 
-        # Fahrzeugklassen-Sync (Phase 9)
+        # Vehicle class sync (Phase 9)
         c0_cls = packet.get("car0_class", "balanced")
         c1_cls = packet.get("car1_class", "balanced")
         if self.car and c0_cls != self.car.car_class:
@@ -583,14 +583,14 @@ class ClientGame:
         zoom         = self.camera.zoom
         off_x, off_y = self.camera.offset()
 
-        # Theme-Hintergrundfarbe
+        # Theme background color
         bg_color = getattr(getattr(self.track, "theme", None), "bg_fill", GRASS_DARK)
         self.screen.fill(bg_color)
 
         self.track.draw(self.screen, off_x, off_y, zoom)
         self.walls.draw(self.screen, off_x, off_y, zoom)
 
-        # Props (dekorativ, Phase 5.3)
+        # Props (decorative, Phase 5.3)
         if self.props:
             self.props.draw(self.screen, off_x, off_y, zoom)
 
@@ -643,7 +643,7 @@ class ClientGame:
                           latency=self._estimated_latency_ms,
                           game_mode=self._mode)
 
-        # Untergrundwarnung
+        # Off-track warning
         if not self._game_over and not self._paused:
             if self.track.surface_at(self.car.state.x, self.car.state.y) == "grass":
                 lbl = self._warn_font.render("OFF TRACK", True, YELLOW)
@@ -669,14 +669,14 @@ class ClientGame:
             cd_txt = cd_font.render(f"Switching to {mode_name}…", True, CYAN)
             self.screen.blit(cd_txt, ((SCREEN_W - cd_txt.get_width()) // 2, SCREEN_H // 2 - 30))
 
-        # ── Phase 5.3: Pause-Overlay ─────────────────────────────────────────
+        # ── Phase 5.3: Pause overlay ──────────────────────────────────────
         if self._paused:
             self._draw_pause_overlay()
 
         self._draw_status_overlay()
         pygame.display.flip()
 
-    # ── Phase 11: Pause-Helfer ────────────────────────────────────────────────
+    # ── Phase 11: Pause helpers ───────────────────────────────────────────────
 
     def _do_return_to_lobby(self) -> None:
         self._return_to_lobby = True
@@ -722,7 +722,7 @@ class ClientGame:
         self.screen.blit(sub,   (px + (panel_w - sub.get_width())   // 2, py + 54))
 
     def _draw_pause_overlay(self) -> None:
-        """Erweitertes Pause-Overlay mit Lobby/Quit-Buttons (Phase 11)."""
+        """Enhanced pause overlay with lobby/quit buttons (Phase 11)."""
         overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 160))
         self.screen.blit(overlay, (0, 0))

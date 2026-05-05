@@ -1,25 +1,25 @@
 # =============================================================================
-#  sound_manager.py  –  Panic Pilot | Zentrales Audio-System (Phase 12)
+#  sound_manager.py  –  Panic Pilot | Central Audio System (Phase 12)
 # =============================================================================
 #
-#  Alle Sounds werden prozedural generiert, falls keine Dateien vorhanden sind.
-#  Die Klasse ist immer sicher verwendbar – bei Fehlern werden alle Methoden
-#  zu No-Ops. Kein Absturz bei fehlenden Dateien oder fehlendem Mixer.
+#  All sounds are generated procedurally if no files are present.
+#  The class is always safe to use – on errors all methods become no-ops.
+#  No crashes on missing files or missing mixer.
 #
-#  Verzeichnisstruktur (optional, für eigene Sounds):
+#  Directory structure (optional, for custom sounds):
 #    assets/sounds/
-#      engine_idle.wav      – Motor-Leerlauf-Loop
-#      engine_hi.wav        – Motor-Hochdrehzahl-Loop
-#      crash.ogg            – Kollisionssound
-#      pickup_fuel.ogg      – Benzinkanister einsammeln
-#      pickup_item.ogg      – Item-Box einsammeln
-#      countdown_beep.ogg   – 3-2-1 Countdown-Ton
-#      countdown_go.ogg     – GO-Signal
-#      boomerang.ogg        – Boomerang-Wurf
-#      music_menu.ogg       – Lobby/Menü-Musik (Loop)
-#      music_race.ogg       – Rennen-Musik (Loop)
+#      engine_idle.wav      – engine idle loop
+#      engine_hi.wav        – engine high-rev loop
+#      crash.ogg            – collision sound
+#      pickup_fuel.ogg      – collect fuel canister
+#      pickup_item.ogg      – collect item box
+#      countdown_beep.ogg   – 3-2-1 countdown beep
+#      countdown_go.ogg     – GO signal
+#      boomerang.ogg        – boomerang throw
+#      music_menu.ogg       – lobby/menu music (loop)
+#      music_race.ogg       – race music (loop)
 #
-#  Verwendung (aus main.py):
+#  Usage (from main.py):
 #      from sound_manager import SoundManager
 #      sm = SoundManager()
 #      sm.set_sfx_volume(80)      # 0-100
@@ -27,7 +27,7 @@
 #      sm.play_music("menu")
 #      sm.play_pickup_fuel()
 #
-#  Verwendung (aus game.py):
+#  Usage (from game.py):
 #      self._sm.update_engine(speed, max_speed, dt)
 #      self._sm.play_collision(intensity)   # intensity 0.0-1.0
 # =============================================================================
@@ -40,7 +40,7 @@ import random
 import logging
 import pygame
 
-# Optionale Import des verbesserten Engine-Sound-Systems
+# Optional import of improved Engine-Sound-System
 try:
     from engine_sound import create_inline_four
     _HAS_ENGINE_SOUND = True
@@ -54,14 +54,14 @@ _CHANNELS      = 2       # Stereo
 _SAMPLE_SIZE   = -16     # Signed 16-bit
 _BUFFER        = 512
 
-# Engine-Frequenzen: 8 Drehzahl-Stufen (Hz des Grundtons) - wenn keine v2 verfügbar
-_ENGINE_BANDS  = 16  # Erhöht auf 16 wenn engine_sound v2 verfügbar
+# Engine frequencies: 8 RPM levels (Hz of fundamental) - when no v2 available
+_ENGINE_BANDS  = 16  # Increased to 16 when engine_sound v2 available
 _ENGINE_FREQS  = [52, 68, 88, 112, 142, 180, 225, 278]  # Legacy fallback
 
-# Kanal-Reservierungen
+# Channel reservations
 _CH_ENGINE_A   = 0
 _CH_ENGINE_B   = 1
-_CH_SFX_START  = 2   # Kanäle 2-9 für SFX
+_CH_SFX_START  = 2   # Channels 2-9 for SFX
 
 _ASSETS_DIR    = os.path.join("assets", "sounds")
 
@@ -79,7 +79,7 @@ except ImportError:
 # ─── Hilfsfunktionen ──────────────────────────────────────────────────────────
 
 def _make_stereo_sound(wave_mono: list[int]) -> pygame.Sound:
-    """Konvertiert eine Mono-Int16-Liste in ein pygame.Sound (Stereo)."""
+    """Converts a mono int16 list to a pygame.Sound (stereo)."""
     n = len(wave_mono)
     # Interleaved stereo: L R L R ...
     data = struct.pack(f"{n * 2}h", *[v for s in wave_mono for v in (s, s)])
@@ -117,7 +117,7 @@ def _normalize(wave: list[float], peak: float = 0.85) -> list[int]:
 # ── numpy-beschleunigte Versionen ─────────────────────────────────────────────
 
 def _np_make_stereo(samples_float: "np.ndarray") -> pygame.Sound:
-    """Schnellerer Pfad wenn numpy verfügbar."""
+    """Faster path when numpy available."""
     s16  = (samples_float * 32767).astype("int16")
     stereo = np.column_stack([s16, s16])
     return pygame.sndarray.make_sound(stereo)
@@ -127,20 +127,20 @@ def _np_make_stereo(samples_float: "np.ndarray") -> pygame.Sound:
 
 def _gen_engine_sound(freq: float, duration: float = 0.8) -> pygame.Sound:
     """
-    Motorgeräusch: Grundton + Obertöne + leichtes Rauschen.
-    Klingt nach einem kleinen, schnellen Kart-Motor.
+    Engine sound: fundamental + overtones + light noise.
+    Sounds like a small, fast kart engine.
     """
     if _HAS_NP:
         n = int(_SAMPLE_RATE * duration)
         t = np.linspace(0, duration, n, endpoint=False)
-        # Kart-ähnliche Klangsynthese: viele Obertöne
+        # Kart-like sound synthesis: many overtones
         w  = 0.35 * np.sin(2 * np.pi * freq       * t)
         w += 0.28 * np.sin(2 * np.pi * freq * 2   * t + 0.3)
         w += 0.18 * np.sin(2 * np.pi * freq * 3   * t + 0.6)
         w += 0.10 * np.sin(2 * np.pi * freq * 4   * t + 0.9)
         w += 0.06 * np.sin(2 * np.pi * freq * 5   * t + 1.2)
         w += 0.03 * np.sin(2 * np.pi * freq * 6.5 * t)
-        # Mechanisches Rauschen
+        # Mechanical noise
         w += 0.02 * np.random.uniform(-1, 1, n)
         # Normalisieren
         w /= np.max(np.abs(w)) * (1.0 / 0.82)
@@ -161,13 +161,13 @@ def _gen_engine_sound(freq: float, duration: float = 0.8) -> pygame.Sound:
 
 
 def _gen_collision_sound() -> pygame.Sound:
-    """Dumpfer Aufprall: tiefer Ton + Rauschen-Burst."""
+    """Muffled impact: deep tone + noise burst."""
     if _HAS_NP:
         n = int(_SAMPLE_RATE * 0.30)
         t = np.linspace(0, 0.30, n, endpoint=False)
-        # Tiefer Thump
+        # Deep thump
         thump = 0.7 * np.sin(2*np.pi*60*t) * np.exp(-t * 14)
-        # Kratzgeräusch
+        # Scratch noise
         noise = 0.4 * np.random.uniform(-1, 1, n) * np.exp(-t * 20)
         # Kurzer Metallklang
         ring  = 0.2 * np.sin(2*np.pi*380*t) * np.exp(-t * 30)
@@ -187,7 +187,7 @@ def _gen_collision_sound() -> pygame.Sound:
 
 
 def _gen_pickup_fuel_sound() -> pygame.Sound:
-    """Aufsteigender, heller Chime – Kraftstoff gefunden."""
+    """Ascending, bright chime – fuel found."""
     if _HAS_NP:
         n    = int(_SAMPLE_RATE * 0.28)
         t    = np.linspace(0, 0.28, n, endpoint=False)
@@ -214,11 +214,11 @@ def _gen_pickup_fuel_sound() -> pygame.Sound:
 
 
 def _gen_pickup_item_sound() -> pygame.Sound:
-    """Magischer Jingle – Item-Box eingesammelt."""
+    """Magical jingle – item box collected."""
     if _HAS_NP:
         n    = int(_SAMPLE_RATE * 0.35)
         t    = np.linspace(0, 0.35, n, endpoint=False)
-        # Zwei Töne im Arpeggio
+        # Two tones in arpeggio
         a = int(0.15 * _SAMPLE_RATE)
         w = np.zeros(n)
         # Erster Ton: 660 Hz
@@ -251,7 +251,7 @@ def _gen_pickup_item_sound() -> pygame.Sound:
 
 
 def _gen_countdown_beep(freq: float = 440.0, duration: float = 0.12) -> pygame.Sound:
-    """Kurzer, klarer Countdown-Ton."""
+    """Short, clear countdown beep."""
     if _HAS_NP:
         n = int(_SAMPLE_RATE * duration)
         t = np.linspace(0, duration, n, endpoint=False)
@@ -273,7 +273,7 @@ def _gen_countdown_beep(freq: float = 440.0, duration: float = 0.12) -> pygame.S
 
 
 def _gen_countdown_go() -> pygame.Sound:
-    """Energetisches GO!-Signal."""
+    """Energetic GO! signal."""
     if _HAS_NP:
         n = int(_SAMPLE_RATE * 0.45)
         t = np.linspace(0, 0.45, n, endpoint=False)
@@ -295,17 +295,17 @@ def _gen_countdown_go() -> pygame.Sound:
 
 
 def _gen_boomerang_sound() -> pygame.Sound:
-    """Wusch-Sound: Doppler-artiger Frequenz-Sweep."""
+    """Whoosh sound: Doppler-like frequency sweep."""
     if _HAS_NP:
         n   = int(_SAMPLE_RATE * 0.22)
         t   = np.linspace(0, 0.22, n, endpoint=False)
-        # Frequenz-Sweep: 800→200 Hz (Vorbeiflug-Effekt)
+        # Frequency sweep: 800→200 Hz (flyby effect)
         freq = 800 - 2700 * (t / 0.22)**1.8
         freq = np.clip(freq, 100, 1200)
         phase = 2 * np.pi * np.cumsum(freq) / _SAMPLE_RATE
         w  = 0.55 * np.sin(phase)
         w += 0.25 * np.sin(phase * 1.5)
-        # Rauschen für "Windgeräusch"
+        # Noise for "wind sound"
         w += 0.15 * np.random.uniform(-1, 1, n)
         env = np.where(t < 0.03, t/0.03,
               np.where(t > 0.16, (0.22-t)/0.06, 1.0))
@@ -357,7 +357,7 @@ def _gen_win_fanfare() -> pygame.Sound:
 
 
 def _gen_pause_sound() -> pygame.Sound:
-    """Sanfter Doppelton für Pause."""
+    """Soft double tone for pause."""
     if _HAS_NP:
         n  = int(_SAMPLE_RATE * 0.18)
         t  = np.linspace(0, 0.18, n, endpoint=False)
@@ -376,19 +376,19 @@ def _gen_pause_sound() -> pygame.Sound:
         return _make_stereo_sound(_normalize(wave, 0.5))
 
 
-# ─── Haupt-Klasse ─────────────────────────────────────────────────────────────
+# ─── Main class ─────────────────────────────────────────────────────────────
 
 class SoundManager:
     """
-    Zentrales Audio-System für Panic Pilot.
+    Central audio system for Panic Pilot.
 
-    Alle Sounds werden automatisch prozedural generiert, falls keine
-    assets/sounds/-Dateien vorhanden sind.
+    All sounds are automatically generated procedurally if no
+    assets/sounds/ files are present.
 
-    Thread-Sicherheit: Nur aus dem Haupt-Thread aufrufen.
+    Thread safety: Call only from the main thread.
     """
 
-    # Engine: Haltezeit vor Band-Wechsel (verhindert Flackern)
+    # Engine: Hold time before band change (prevents flickering)
     _ENGINE_HYSTERESIS = 0.08   # Sekunden
 
     def __init__(self) -> None:
@@ -406,13 +406,13 @@ class SoundManager:
         self._eng_hold_t    = 0.0   # Hysterese-Timer
         self._eng_sounds: list[pygame.Sound] = []
 
-        # Neues Engine-Sound-System (v2)
+        # New Engine-Sound-System (v2)
         self._engine_sound_v2 = None
         self._use_engine_sound_v2 = False
 
         # SFX
         self._sfx: dict[str, pygame.Sound] = {}
-        # Kollisions-Cooldown (verhindert Spam)
+        # Collision cooldown (prevents spam)
         self._crash_cd      = 0.0
 
         try:
@@ -423,7 +423,7 @@ class SoundManager:
             log.info("pygame.mixer initialized (%d Hz, %d channels).",
                      _SAMPLE_RATE, pygame.mixer.get_num_channels())
             
-            # Versuche neues Engine-Sound-System zu initialisieren
+            # Try to initialize new Engine-Sound-System
             if _HAS_ENGINE_SOUND:
                 try:
                     self._engine_sound_v2 = create_inline_four()
@@ -439,16 +439,16 @@ class SoundManager:
     # ─── Initialisierung ──────────────────────────────────────────────────────
 
     def _load_all(self) -> None:
-        """Lädt oder generiert alle Sounds."""
-        # Engine-Sounds: Nutze v2 Synthesis wenn verfügbar
+        """Loads or generates all sounds."""
+        # Engine sounds: Use v2 synthesis if available
         if self._use_engine_sound_v2 and self._engine_sound_v2:
             self._gen_engine_sounds_v2()
         else:
-            # Legacy: Fallback auf die alten Frequenzbänder
+            # Legacy: Fallback to old frequency bands
             for freq in _ENGINE_FREQS:
                 self._eng_sounds.append(_gen_engine_sound(freq))
 
-        # SFX: erst Datei versuchen, dann prozedural erzeugen
+        # SFX: try file first, then generate procedurally
         self._sfx["crash"]         = self._try_load("crash.ogg",
                                                      _gen_collision_sound)
         self._sfx["pickup_fuel"]   = self._try_load("pickup_fuel.ogg",
@@ -471,12 +471,12 @@ class SoundManager:
                 snd.set_volume(self._sfx_vol)
 
     def _gen_engine_sounds_v2(self) -> None:
-        """Generiert Motor-Sounds mit echter Synthese (engine_sound.py)."""
+        """Generates engine sounds with real synthesis (engine_sound.py)."""
         if not self._engine_sound_v2:
             return
         
         log.info("Generating engine sounds via synthesis (v2)...")
-        # Generiere 16 RPM-Stufen für spektrales Fahren
+        # Generate 16 RPM levels for spectral driving
         for i in range(16):
             throttle = i / 15.0  # 0.0 bis 1.0
             try:
@@ -492,7 +492,7 @@ class SoundManager:
                 sample_count = int(_SAMPLE_RATE * cycle_duration)
                 audio_bytes = self._engine_sound_v2.gen_audio(sample_count)
                 
-                # Konvertiere Mono zu Stereo
+                # Convert mono to stereo
                 audio_i16 = struct.unpack(f'<{sample_count}h', audio_bytes)
                 audio_stereo = b''.join(
                     struct.pack('<hh', val, val) for val in audio_i16
@@ -503,7 +503,7 @@ class SoundManager:
                 log.debug(f"Engine Sound {i}: Throttle {throttle:.2%}, RPM {self._engine_sound_v2.current_rpm:.0f}")
             except Exception as e:
                 log.warning(f"Engine sound {i} generation failed: {e}")
-                # Fallback auf Legacy
+                # Fallback to Legacy
                 self._use_engine_sound_v2 = False
                 self._eng_sounds.clear()
                 for freq in _ENGINE_FREQS:
@@ -512,22 +512,22 @@ class SoundManager:
 
     @staticmethod
     def _try_load(filename: str, fallback_fn) -> "pygame.Sound | None":
-        """Lädt aus assets/sounds/ oder ruft fallback_fn() auf."""
+        """Loads from assets/sounds/ or calls fallback_fn()."""
         path = os.path.join(_ASSETS_DIR, filename)
         try:
             if os.path.isfile(path):
                 snd = pygame.mixer.Sound(path)
-                log.info("Sound geladen: %s", path)
+                log.info("Sound loaded: %s", path)
                 return snd
         except Exception as exc:
-            log.warning("Sound-Ladefehler %s: %s", path, exc)
+            log.warning("Sound load error %s: %s", path, exc)
         try:
             return fallback_fn()
         except Exception as exc:
             log.warning("Sound generation error for %s: %s", filename, exc)
             return None
 
-    # ─── Lautstärke ───────────────────────────────────────────────────────────
+    # ─── Volume ───────────────────────────────────────────────────────────
 
     def set_sfx_volume(self, vol: int) -> None:
         """vol: 0-100"""
@@ -537,7 +537,7 @@ class SoundManager:
         for snd in self._sfx.values():
             if snd:
                 snd.set_volume(self._sfx_vol)
-        # Engine-Lautstärke live anpassen
+        # Adjust engine volume live
         self._refresh_engine_volume()
 
     def set_music_volume(self, vol: int) -> None:
@@ -556,13 +556,13 @@ class SoundManager:
     def get_music_volume_int(self) -> int:
         return int(self._music_vol * 100)
 
-    # ─── Musik ────────────────────────────────────────────────────────────────
+    # ─── Music ────────────────────────────────────────────────────────────────
 
     def play_music(self, track: str) -> None:
         """
         track: "menu" oder "race"
-        Lädt die entsprechende Datei aus assets/sounds/.
-        Ist keine Datei da, bleibt die Musik stumm.
+        Loads the corresponding file from assets/sounds/.
+        If no file exists, music stays silent.
         """
         if not self._ok:
             return
@@ -583,11 +583,11 @@ class SoundManager:
                 pygame.mixer.music.play(-1, fade_ms=800)
                 self._current_music = track
             else:
-                # Sanft Musik ausblenden wenn keine Datei
+                # Fade out music gently if no file
                 pygame.mixer.music.fadeout(600)
                 self._current_music = track
         except Exception as exc:
-            log.warning("Musik-Fehler (%s): %s", track, exc)
+            log.warning("Music error (%s): %s", track, exc)
 
     def stop_music(self, fade_ms: int = 800) -> None:
         if not self._ok:
@@ -598,21 +598,21 @@ class SoundManager:
             pass
         self._current_music = ""
 
-    # ─── Motor-Sound (dynamische Tonhöhe) ─────────────────────────────────────
+    # ─── Engine sound (dynamic pitch) ─────────────────────────────────────
 
     def engine_start(self) -> None:
-        """Motor-Sound starten (beim Rennen-Start)."""
+        """Start engine sound (at race start)."""
         if not self._ok:
             return
         
-        # Nutze neues System, wenn verfügbar
+        # Use new system if available
         if self._use_engine_sound_v2:
             self.engine_start_v2()
         else:
             self.engine_start_legacy()
 
     def engine_start_legacy(self) -> None:
-        """Motor-Sound starten (Legacy Band-System)."""
+        """Start engine sound (legacy band system)."""
         if not self._ok or not self._eng_sounds:
             return
         self._engine_on = True
@@ -622,7 +622,7 @@ class SoundManager:
         ch.set_volume(self._sfx_vol * 0.55)
 
     def engine_start_v2(self) -> None:
-        """Motor-Sound starten (Neues Synthesis-System mit besseren Sounds)."""
+        """Start engine sound (new synthesis system with better sounds)."""
         if not self._ok or not self._eng_sounds:
             return
         self._engine_on = True
@@ -630,10 +630,10 @@ class SoundManager:
         ch = pygame.mixer.Channel(_CH_ENGINE_A)
         ch.play(self._eng_sounds[0], loops=-1)
         ch.set_volume(self._sfx_vol * 0.55)
-        log.debug("Engine v2 gestartet (Band 0)")
+        log.debug("Engine v2 started (band 0)")
 
     def engine_stop(self) -> None:
-        """Motor-Sound stoppen."""
+        """Stop engine sound."""
         if not self._ok:
             return
         
@@ -645,7 +645,7 @@ class SoundManager:
             self.engine_stop_legacy()
 
     def engine_stop_legacy(self) -> None:
-        """Motor-Sound stoppen (Legacy)."""
+        """Stop engine sound (legacy)."""
         try:
             pygame.mixer.Channel(_CH_ENGINE_A).fadeout(300)
             pygame.mixer.Channel(_CH_ENGINE_B).fadeout(300)
@@ -653,7 +653,7 @@ class SoundManager:
             pass
 
     def engine_stop_v2(self) -> None:
-        """Motor-Sound stoppen (v2) - nutze normales Fade-Out."""
+        """Stop engine sound (v2) - use normal fade-out."""
         try:
             pygame.mixer.Channel(_CH_ENGINE_A).fadeout(300)
             pygame.mixer.Channel(_CH_ENGINE_B).fadeout(300)
@@ -663,12 +663,12 @@ class SoundManager:
     def update_engine(self, speed: float, max_speed: float = 500.0,
                       dt: float = 0.016) -> None:
         """
-        Jede Update-Runde aufrufen.
-        speed:     aktuelle Fahrzeuggeschwindigkeit (px/s)
-        max_speed: Referenz-Maximalgeschwindigkeit
-        dt:        Delta-Zeit seit letztem Frame
+        Call every update round.
+        speed:     current vehicle speed (px/s)
+        max_speed: Reference max speed
+        dt:        Delta time since last frame
 
-        Wählt automatisch das passende Motorgeräusch und blendet sanft über.
+        Automatically selects the appropriate engine sound and crossfades smoothly.
         """
         if not self._ok or not self._engine_on:
             return
@@ -683,8 +683,8 @@ class SoundManager:
     def update_engine_v2(self, speed: float, max_speed: float = 500.0,
                          dt: float = 0.016) -> None:
         """
-        Aktualisiert Motor-Sound (mit v2 Synthese-generierte Sounds).
-        Nutzt 16 Bänder statt 8 für glattere Übergänge.
+        Updates engine sound (with v2 synthesis-generated sounds).
+        Uses 16 bands instead of 8 for smoother transitions.
         """
         if not self._eng_sounds:
             return
@@ -693,12 +693,12 @@ class SoundManager:
 
         pct  = min(1.0, max(0.0, abs(speed) / max(1.0, max_speed)))
         pct_adj = math.pow(pct, 0.65)
-        band = min(15, int(pct_adj * 16))  # 16 Bänder statt 8
+        band = min(15, int(pct_adj * 16))  # 16 bands instead of 8
 
         if band == self._eng_band or self._eng_hold_t > 0:
             return
 
-        # Band-Wechsel mit Crossfade
+        # Band change with crossfade
         old_ch  = pygame.mixer.Channel(self._eng_a_idx)
         new_ch  = pygame.mixer.Channel(self._eng_b_idx)
         
@@ -715,7 +715,7 @@ class SoundManager:
     def update_engine_legacy(self, speed: float, max_speed: float = 500.0,
                              dt: float = 0.016) -> None:
         """
-        Aktualisiert Motor-Sound (Legacy Band-System).
+        Updates engine sound (legacy band system).
         """
         if not self._eng_sounds:
             return
@@ -729,7 +729,7 @@ class SoundManager:
         if band == self._eng_band or self._eng_hold_t > 0:
             return
 
-        # Band-Wechsel: Crossfade über 2 Kanäle
+        # Band change: crossfade across 2 channels
         old_ch  = pygame.mixer.Channel(self._eng_a_idx)
         new_ch  = pygame.mixer.Channel(self._eng_b_idx)
         new_snd = self._eng_sounds[band]
@@ -737,11 +737,11 @@ class SoundManager:
         new_ch.play(new_snd, loops=-1)
         new_ch.set_volume(0.0)
 
-        # Sanfter Überblend-Schritt
+        # Gentle crossfade step
         old_ch.fadeout(120)
         new_ch.set_volume(self._sfx_vol * 0.55)
 
-        # Kanäle tauschen
+        # Swap channels
         self._eng_a_idx, self._eng_b_idx = self._eng_b_idx, self._eng_a_idx
         self._eng_band   = band
         self._eng_hold_t = self._ENGINE_HYSTERESIS
@@ -792,8 +792,8 @@ class SoundManager:
     def play_collision(self, intensity: float = 1.0) -> None:
         """
         Kollisionssound.
-        intensity: 0.0-1.0 (skaliert Lautstärke).
-        Cooldown verhindert Spam bei mehrfachem Wandkontakt.
+        intensity: 0.0-1.0 (scales volume).
+        Cooldown prevents spam on repeated wall contact.
         """
         if self._crash_cd > 0:
             return
@@ -822,10 +822,10 @@ class SoundManager:
     def play_pause(self) -> None:
         self._play_sfx("pause", 0.6)
 
-    # ─── Aufräumen ────────────────────────────────────────────────────────────
+    # ─── Cleanup ────────────────────────────────────────────────────────────
 
     def shutdown(self) -> None:
-        """Mixer schließen – beim Beenden des Spiels aufrufen."""
+        """Close mixer – call when exiting the game."""
         if not self._ok:
             return
         try:
@@ -837,13 +837,13 @@ class SoundManager:
         self._ok = False
 
 
-# ─── Modul-Singleton ─────────────────────────────────────────────────────────
+# ─── Module singleton ─────────────────────────────────────────────────────────
 
 _instance: SoundManager | None = None
 
 
 def get() -> SoundManager:
-    """Gibt die globale SoundManager-Instanz zurück (lazy init)."""
+    """Returns the global SoundManager instance (lazy init)."""
     global _instance
     if _instance is None:
         _instance = SoundManager()

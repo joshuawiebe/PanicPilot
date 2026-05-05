@@ -8,13 +8,12 @@ from settings import *
 
 
 class HUD:
-    """
-    Zeichnet Tacho, Tankanzeige und Timer als festes Panel oben links.
-    Modulares Design: Methode `draw(surface, speed, fuel, elapsed)` genügt.
+    """Draws speedometer, fuel gauge, and timer as a fixed panel in the top-left.
+    Modular design: method `draw(surface, speed, fuel, elapsed)` is sufficient.
     """
 
     PANEL_W = 240
-    PANEL_H = 152   # +32 px für Item-Slot
+    PANEL_H = 152   # +32 px for item slot
     PANEL_X = 16
     PANEL_Y = 16
     CORNER  = 8
@@ -26,7 +25,7 @@ class HUD:
         self._font_warn= pygame.font.SysFont("Arial", 36, bold=True)
         self._font_big = pygame.font.SysFont("Arial", 48, bold=True)
 
-        # Panel-Oberfläche (einmal vorab, Alpha)
+        # Panel surface (pre-rendered once, alpha)
         self._panel = pygame.Surface((self.PANEL_W, self.PANEL_H), pygame.SRCALPHA)
 
     # ─── Haupt-Draw ──────────────────────────────────────────────────────────
@@ -68,7 +67,7 @@ class HUD:
         pw, ph = self.PANEL_W, self.PANEL_H
         px, py = self.PANEL_X, self.PANEL_Y
 
-        # Hintergrund
+        # Background
         self._panel.fill((0, 0, 0, 0))
         pygame.draw.rect(self._panel, (*HUD_BG, 195),
                          (0, 0, pw, ph), border_radius=self.CORNER)
@@ -76,14 +75,14 @@ class HUD:
                          (0, 0, pw, ph), 2, border_radius=self.CORNER)
         surface.blit(self._panel, (px, py))
 
-        # ── Tacho ─────────────────────────────────────────────────────────────
-        speed_kmh = abs(speed) * 0.47   # Skalierung px/s → km/h-Äquivalent
+        # Speedometer
+        speed_kmh = abs(speed) * 0.47   # Scaling px/s → km/h equivalent
         spd_lbl  = self._font_sm.render("SPEED", True, (150, 160, 180))
         spd_val  = self._font_lg.render(f"{speed_kmh:>3.0f} km/h", True, CYAN)
         surface.blit(spd_lbl, (px + 12, py + 10))
         surface.blit(spd_val, (px + 12, py + 26))
 
-        # Tacho-Balken
+        # Speed bar
         bar_x = px + 12
         bar_y = py + 54
         bar_w = pw - 24
@@ -98,7 +97,7 @@ class HUD:
         pygame.draw.rect(surface, (80, 90, 110),
                          (bar_x, bar_y, bar_w, bar_h), 1, border_radius=4)
 
-        # ── Tankanzeige ───────────────────────────────────────────────────────
+        # ── Fuel gauge ────────────────────────────────────────────────────────
         fuel_pct = max(0.0, fuel / FUEL_MAX)
         fuel_lbl = self._font_sm.render("FUEL", True, (150, 160, 180))
         surface.blit(fuel_lbl, (px + 12, py + 70))
@@ -110,7 +109,7 @@ class HUD:
         pygame.draw.rect(surface, DARK_GRAY, (fb_x, fb_y, fb_w, fb_h),
                          border_radius=4)
         fc = GREEN if fuel_pct > 0.35 else (ORANGE if fuel_pct > 0.18 else RED)
-        # CLAMP: Füllbreite strikt auf fb_w begrenzen – verhindert Überlauf bei vollem Tank
+        # CLAMP: fill width strictly limited to fb_w – prevents overflow when tank is full
         fill_w = max(0, min(fb_w, int(fb_w * fuel_pct)))
         pygame.draw.rect(surface, fc,
                          (fb_x, fb_y, fill_w, fb_h),
@@ -118,7 +117,7 @@ class HUD:
         pygame.draw.rect(surface, (80, 90, 110),
                          (fb_x, fb_y, fb_w, fb_h), 1, border_radius=4)
         pct_txt = self._font_sm.render(f"{fuel_pct*100:.0f}%", True, WHITE)
-        # Rechts-bündig innerhalb der HUD-Box (6px Rand vor dem rechten Rand)
+        # Right-aligned within the HUD box (6px margin from right edge)
         pct_x = px + pw - pct_txt.get_width() - 6
         pct_y = fb_y + (fb_h - pct_txt.get_height()) // 2   # vertikal zentriert
         surface.blit(pct_txt, (pct_x, pct_y))
@@ -135,11 +134,11 @@ class HUD:
 
     def _draw_inventory(self, surface: pygame.Surface,
                         inventory: str | None) -> None:
-        """Item-Slot: kleines Quadrat unter dem HUD-Panel."""
+        """Item slot: small square below the HUD panel."""
         px, py = self.PANEL_X, self.PANEL_Y
         pw     = self.PANEL_W
 
-        # Positions-Zeile innerhalb des erweiterten Panels
+        # Position within the extended panel
         slot_y  = py + 126
         slot_x  = px + 12
         slot_w  = 32
@@ -150,14 +149,14 @@ class HUD:
         lbl = self._font_sm.render("ITEM", True, (150, 160, 180))
         surface.blit(lbl, (slot_x, slot_y + 2))
 
-        # Slot-Box
+        # Slot box
         box_x = px + 58
         pygame.draw.rect(surface, (25, 20, 40),
                          (box_x, slot_y, slot_w, slot_h),
                          border_radius=4)
 
         if inventory is None:
-            # Leer – graues Raster-Muster
+            # Empty – gray grid pattern
             pygame.draw.rect(surface, (50, 50, 70),
                              (box_x, slot_y, slot_w, slot_h),
                              2, border_radius=4)
@@ -165,7 +164,7 @@ class HUD:
             surface.blit(empty, (box_x + slot_w//2 - empty.get_width()//2,
                                   slot_y + slot_h//2 - empty.get_height()//2))
         elif inventory == "pocket_boost":
-            # Gelbe Box mit "B"
+            # Yellow box with "B"
             pygame.draw.rect(surface, (200, 160, 0),
                              (box_x, slot_y, slot_w, slot_h),
                              border_radius=4)
@@ -179,7 +178,7 @@ class HUD:
             surface.blit(hint, (box_x + slot_w + 6,
                                  slot_y + slot_h//2 - hint.get_height()//2))
         elif inventory == "oil_drop":
-            # Schwarze Box mit "Ö" (Öl)
+            # Black box with "Ö" (oil)
             pygame.draw.rect(surface, (18, 16, 10),
                              (box_x, slot_y, slot_w, slot_h),
                              border_radius=4)
@@ -193,7 +192,7 @@ class HUD:
             surface.blit(hint, (box_x + slot_w + 6,
                                  slot_y + slot_h//2 - hint.get_height()//2))
         elif inventory == "green_boomerang":
-            # Grüne Box mit "↺"
+            # Green box with "↺"
             pygame.draw.rect(surface, (20, 80, 30),
                              (box_x, slot_y, slot_w, slot_h),
                              border_radius=4)
@@ -207,7 +206,7 @@ class HUD:
             surface.blit(hint, (box_x + slot_w + 6,
                                  slot_y + slot_h//2 - hint.get_height()//2))
         elif inventory == "red_boomerang":
-            # Rote Box mit "R"
+            # Red box with "R"
             pygame.draw.rect(surface, (80, 20, 20),
                              (box_x, slot_y, slot_w, slot_h),
                              border_radius=4)
@@ -221,7 +220,7 @@ class HUD:
             surface.blit(hint, (box_x + slot_w + 6,
                                  slot_y + slot_h//2 - hint.get_height()//2))
         else:
-            # Unbekanntes Item – lila "?"
+            # Unknown item – purple "?"
             pygame.draw.rect(surface, (100, 40, 180),
                              (box_x, slot_y, slot_w, slot_h),
                              border_radius=4)
@@ -230,7 +229,7 @@ class HUD:
                                     slot_y + slot_h//2 - item_lbl.get_height()//2))
 
     def _draw_class_badge(self, surface: pygame.Surface, car_class: str) -> None:
-        """Kleines Klassen-Badge oben rechts im Panel (Phase 11: kein C=wechseln)."""
+        """Small class badge in the top-right of the panel (Phase 11: no C=switch)."""
         from settings import CAR_CLASSES
         cs   = CAR_CLASSES.get(car_class, CAR_CLASSES["balanced"])
         name = cs["display"]
@@ -239,7 +238,7 @@ class HUD:
         badge = self._font_sm.render(f"[ {name} ]", True, col)
         surface.blit(badge, (px + pw - badge.get_width() - 6, py + 6))
 
-    # ─── Hilfsmethoden ───────────────────────────────────────────────────────
+    # ─── Helper methods ────────────────────────────────────────────────────────
 
     @staticmethod
     def _speed_color(pct: float) -> tuple:
@@ -254,7 +253,7 @@ class HUD:
                                 color: tuple, font: pygame.font.Font,
                                 y: int) -> None:
         lbl = font.render(text, True, color)
-        # Schatten
+        # Shadow
         shadow = font.render(text, True, BLACK)
         cx = (SCREEN_W - lbl.get_width()) // 2
         surface.blit(shadow, (cx + 2, y + 2))

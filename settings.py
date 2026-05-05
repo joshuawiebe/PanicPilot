@@ -1,5 +1,5 @@
 # =============================================================================
-#  settings.py  –  Panic Pilot | Alle globalen Konstanten
+#  settings.py  –  Panic Pilot | All global constants
 # =============================================================================
 
 SCREEN_W  = 1920
@@ -29,10 +29,10 @@ LIGHT_BLUE  = (130, 200, 255)
 CYAN        = (  0, 200, 210)
 HUD_BG      = (  8,  12,  22)
 
-# ── Fahrzeug-Physik ───────────────────────────────────────────────────────────
-CAR_ACCEL       = 300.0   # +15 % gegenüber Phase 4
+# ── Vehicle Physics ──────────────────────────────────────────────────────────
+CAR_ACCEL       = 300.0   # +15% compared to Phase 4
 CAR_BRAKE_DECEL = 400.0
-CAR_MAX_SPEED   = 500.0   # +16 % (430 → 500 px/s) – rasanteres Rennen
+CAR_MAX_SPEED   = 500.0   # +16% (430 → 500 px/s) – faster racing
 CAR_MAX_REVERSE = 150.0
 CAR_FRICTION    = 130.0
 
@@ -52,12 +52,12 @@ NUM_CANISTERS       =   3
 MAX_PARTICLES = 120
 
 # =============================================================================
-#  Audio-Einstellungen  –  Phase 12
+#  Audio Settings  –  Phase 12
 # =============================================================================
-#  Werte: 0-100  (werden zur Laufzeit durch die Einstellungs-Szene überschrieben)
+#  Values: 0-100  (overridden at runtime by the settings scene)
 # =============================================================================
-MUSIC_VOLUME: int = 70   # Musik-Lautstärke (0-100)
-SFX_VOLUME:   int = 80   # Effekt-Lautstärke (0-100)
+MUSIC_VOLUME: int = 70   # Music volume (0-100)
+SFX_VOLUME:   int = 80   # Effects volume (0-100)
 
 # ── Settings persistence ──────────────────────────────────────────────────────
 
@@ -94,17 +94,17 @@ def save_settings() -> None:
         pass
 
 # =============================================================================
-#  Car-Klassen  –  Phase 9
+#  Car Classes  –  Phase 9
 # =============================================================================
-#  Jede Klasse definiert Multiplikatoren relativ zu den Basis-Werten oben.
-#  grip_mod:       Faktor auf den theme-basierten Grip (>1 = mehr Grip)
-#  grass_factor:   Überschreibt GRASS_SPEED_FACTOR für diese Klasse
+#  Each class defines multipliers relative to the base values above.
+#  grip_mod:       factor on the theme-based grip (>1 = more grip)
+#  grass_factor:   overrides GRASS_SPEED_FACTOR for this class
 # =============================================================================
 CAR_CLASSES = {
     "balanced": {
         "display":      "Balanced",
-        "color_host":   (210,  45,  45),   # Rot
-        "color_client": ( 30, 100, 210),   # Blau
+        "color_host":   (210,  45,  45),   # Red
+        "color_client": ( 30, 100, 210),   # Blue
         "accel_mul":    1.00,
         "speed_mul":    1.00,
         "friction_mul": 1.00,
@@ -116,26 +116,26 @@ CAR_CLASSES = {
     "speedster": {
         "display":      "Speedster",
         "color_host":   (255, 140,   0),   # Orange
-        "color_client": (255, 200,  50),   # Gelb
+        "color_client": (255, 200,  50),   # Yellow
         "accel_mul":    1.45,
         "speed_mul":    1.35,
-        "friction_mul": 0.65,   # wenig Bremswirkung → schleudert
+        "friction_mul": 0.65,   # low braking effect → spins out
         "fuel_mul":     1.55,
-        "grass_factor": GRASS_SPEED_FACTOR * 0.55,   # viel schlechter auf Gras
-        "grip_mod":     0.60,   # rutschig auf Eis/Öl
-        "sprite_w":     20, "sprite_h": 42,  # schmal & lang
+        "grass_factor": GRASS_SPEED_FACTOR * 0.55,   # much worse on grass
+        "grip_mod":     0.60,   # slippery on ice/oil
+        "sprite_w":     20, "sprite_h": 42,  # narrow & long
     },
     "tank": {
         "display":      "Tank",
-        "color_host":   ( 50, 160,  50),   # Grün
-        "color_client": ( 30, 120,  30),   # Dunkelgrün
+        "color_host":   ( 50, 160,  50),   # Green
+        "color_client": ( 30, 120,  30),   # Dark green
         "accel_mul":    0.68,
         "speed_mul":    0.72,
         "friction_mul": 1.40,
         "fuel_mul":     0.75,
-        "grass_factor": min(0.92, GRASS_SPEED_FACTOR * 2.3),  # Offroad-King
-        "grip_mod":     2.00,   # kaum rutschig auf Eis/Öl
-        "sprite_w":     30, "sprite_h": 32,  # breit & flach
+        "grass_factor": min(0.92, GRASS_SPEED_FACTOR * 2.3),  # Off-road king
+        "grip_mod":     2.00,   # barely slippery on ice/oil
+        "sprite_w":     30, "sprite_h": 32,  # wide & flat
     },
 }
 CLASS_ORDER = ["balanced", "speedster", "tank"]

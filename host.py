@@ -2,11 +2,11 @@
 #  host.py  –  Panic Pilot | Host (Phase 5.3)
 # =============================================================================
 #
-#  Phase 5.3 Änderungen:
-#    - speed_scale Parameter: Spieltempo für beide Spieler identisch
-#    - paused im Paket: Client friert bei Pause ebenfalls ein
-#    - collected_by im Paket: Pickup-Sync via FuelCanister.to_net_dict()
-#    - S-Taste auf End-Screen: _return_to_settings Signal an main.py
+#  Phase 5.3 changes:
+#    - speed_scale parameter: game tempo identical for both players
+#    - paused in packet: client also freezes when paused
+#    - collected_by in packet: pickup sync via FuelCanister.to_net_dict()
+#    - S key on end-screen: _return_to_settings signal to main.py
 # =============================================================================
 from __future__ import annotations
 import socket
@@ -35,8 +35,8 @@ def get_own_ip() -> str:
 
 class HostGame(Game):
     """
-    Erweitert Game um Netzwerk-Logik.
-    Modus 3: empfängt Input des Clients als Auto-B-Input, simuliert beide Autos.
+    Extends Game with network logic.
+    Mode 3: receives client input as car-B input, simulates both cars.
     """
 
     def __init__(self, mode: int = 1, track_length: int = 20,
@@ -54,7 +54,7 @@ class HostGame(Game):
         self._host_room_name    = host_room_name
         self._client_room_name  = client_room_name
 
-        # Netz: entweder extern (Lobby) oder neu erstellen
+        # Network: either external (lobby) or create new
         if net is not None:
             self._net      = net
             self._owns_net = False
@@ -63,7 +63,7 @@ class HostGame(Game):
             self._net.start()
             self._owns_net = True
 
-        # Klassen sind durch die Lobby-Auswahl gelockt
+        # Classes locked by lobby selection
         super().__init__(screen=screen, locked_class0=car_class_host,
                          locked_class1=car_class_client)
         self.mode        = mode
@@ -129,10 +129,10 @@ class HostGame(Game):
             self.running               = False
             self._return_to_settings   = True
 
-    # ─── Update ──────────────────────────────────────────────────────────────
+    # ─── Update ───────────────────────────────────────────────────────────────
 
     def update(self, dt: float, input_override=None, input_car1=None) -> None:
-        # Phase 11: Client will zurück zur Lobby?
+        # Phase 11: Client wants to return to lobby?
         if self._net.client_wants_lobby():
             self._return_to_lobby  = True
             self._lobby_initiator  = "remote"
@@ -152,8 +152,8 @@ class HostGame(Game):
         else:
             self._disconnect_timer = None
 
-        # Phase 11.1: request_lobby_state während des Spiels ignorieren
-        # (wird in HostLobby behandelt; hier nur leeren damit Flag nicht hängt)
+        # Phase 11.1: ignore request_lobby_state during game
+        # (handled in HostLobby; just clear here so flag doesn't stick)
         self._net.client_requests_state()
 
         # Mode switch: check for navigator confirm/deny
@@ -180,14 +180,14 @@ class HostGame(Game):
                 self.winner = None
                 self._update_caption()
 
-        # Map-Handshake: einmalig nach neuem Client oder Reset
+        # Map handshake: one-time after new client or reset
         if self._net.got_new_client() or self._pending_map_send:
             if self._net.is_connected():
                 map_data = {**self.track.to_dict(), "game_mode": self.mode}
                 self._net.send_map(map_data)
             self._pending_map_send = False
 
-        # Countdown einfrieren bis Client verbunden
+        # Freeze countdown until client connects
         if not self._net.is_connected() and self._countdown > 0:
             self.cars[0].state.speed = 0.0
             if self.mode == 3:
@@ -195,7 +195,7 @@ class HostGame(Game):
             self._net.send_state(self._build_packet())
             return
 
-        # Client-Input abholen
+        # Fetch client input
         raw = self._net.get_client_input()
         if raw is not None:
             client_inp = InputState.from_dict(raw)
@@ -216,7 +216,7 @@ class HostGame(Game):
                 use_item    = client_inp.use_item,
             )
 
-        # Input je Modus
+        # Input per mode
         keys = pygame.key.get_pressed()
         if self.mode == 1:
             merged_inp = InputState.merge(InputState.host_keys(keys),
@@ -232,7 +232,7 @@ class HostGame(Game):
         super().update(dt, input_override=merged_inp, input_car1=car1_inp)
         self._net.send_state(self._build_packet())
 
-    # ─── Paket ───────────────────────────────────────────────────────────────
+    # ─── Packet ───────────────────────────────────────────────────────────────
 
     def _build_packet(self) -> dict:
         s0  = self.cars[0].state
@@ -249,7 +249,7 @@ class HostGame(Game):
             "mode":       self.mode,
             "countdown":  self._countdown,
             "go_timer":   self._go_timer,
-            # ── Phase 5.3: paused + collected_by Sync ────────────────────────
+            # ── Phase 5.3: paused + collected_by sync ───────────────────────
             "paused":     self._paused,
             "canisters":  [c.to_net_dict()  for c in self.canisters],
             "boosts":     [b.to_net_dict()  for b in self.boosts],
@@ -258,11 +258,11 @@ class HostGame(Game):
             "boomerangs": [b.to_net_dict()  for b  in self.boomerangs],
             "car0_class": self.cars[0].car_class,
             "car1_class": self.cars[1].car_class,
-            # Inventar-Sync: Client zeigt eigenes Item korrekt an
+            # Inventory sync: client shows own item correctly
             "car0_inv":   self.cars[0].inventory or "",
             "car1_inv":   (self.cars[1].inventory or "") if self.mode == 3 else "",
         }
-        # Auto B (Modus 3)
+        # Car B (Mode 3)
         if self.mode == 3:
             s1 = self.cars[1].state
             pkt["car1"] = {
@@ -273,7 +273,7 @@ class HostGame(Game):
             }
         return pkt
 
-    # ─── draw ────────────────────────────────────────────────────────────────
+    # ─── Draw ────────────────────────────────────────────────────────────────
 
     def draw(self) -> None:
         self.screen = pygame.display.get_surface() or self.screen
@@ -288,7 +288,7 @@ class HostGame(Game):
         self.draw_countdown(self.screen)
         if self.game_over or self.winner:
             self.draw_winner(self.screen)
-        # Pause-Overlay (Host zeichnet es auch – Client erhält _paused via Paket)
+        # Pause overlay (host draws it too – client receives _paused via packet)
         if self._paused:
             self.draw_pause_overlay(self.screen)
         # Disconnect countdown overlay
@@ -313,14 +313,14 @@ class HostGame(Game):
         lbl = self._status_font.render(txt, True, color)
         self.screen.blit(lbl, (SCREEN_W - lbl.get_width() - 12, 12))
 
-        # Modus oben Mitte
+        # Mode top center
         modes  = {1: "SPLIT CONTROL", 2: "⦿ PANIC PILOT", 3: "⚡ PvP RACING"}
         colors = {1: GRAY, 2: CYAN, 3: YELLOW}
         m_lbl = self._mode_font.render(
             modes.get(self.mode, ""), True, colors.get(self.mode, WHITE))
         self.screen.blit(m_lbl, ((SCREEN_W - m_lbl.get_width()) // 2, 10))
 
-        # Tasten-Hint unten links – unterschiedlich je Zustand
+        # Key hints bottom left – different per state
         if self.game_over or self.winner:
             hint_txt = "[R]=Restart  [N]=Switch Mode  [M]=Menu  [S]=Settings"
             hint_color = CYAN
@@ -349,11 +349,11 @@ class HostGame(Game):
         try:
             super().run()
         finally:
-            # Phase 11: Nur senden wenn Host selbst die Lobby initiiert hat
+            # Phase 11: Only send if host itself initiated the lobby
             if (getattr(self, "_return_to_lobby", False)
                     and getattr(self, "_lobby_initiator", "") != "remote"):
                 self._net.send_back_to_lobby()
-            # Phase 11.2: Flags nullen damit nächster Start sauber ist
+            # Phase 11.2: Zero out flags so next start is clean
             if self._net.is_connected():
                 self._net.reset_lobby_flags()
             if self._owns_net:

@@ -1,5 +1,5 @@
 # =============================================================================
-#  input_state.py  –  Panic Pilot | Eingabe-Zustand (Phase 9)
+#  input_state.py  –  Panic Pilot | Input state (Phase 9)
 # =============================================================================
 from __future__ import annotations
 from dataclasses import dataclass
@@ -15,7 +15,7 @@ class InputState:
     steer_right:  bool  = False
     ping_pos:     Optional[tuple] = None
     use_item:     bool  = False   # SPACE
-    cycle_class:  bool  = False   # C – Fahrzeugklasse wechseln
+    cycle_class:  bool  = False   # C – switch vehicle class
 
     @classmethod
     def from_keys(cls, keys) -> InputState:

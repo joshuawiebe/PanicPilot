@@ -1,26 +1,26 @@
 # =============================================================================
-#  main.py  –  Panic Pilot | Phase 11.2: Stabilitäts-Fix & UI-Strenge
+#  main.py  –  Panic Pilot | Phase 11.2: Stability Fix & UI Strictness
 # =============================================================================
 #
-#  Änderungen gegenüber Phase 11.1:
-#   1. 3-Wege-Handshake – Host sendet "start" → Client antwortet "ready_for_map"
-#                         → Host sendet erst dann die Karte (Timeout 0.5 s)
-#   2. Map-Timeout       – Client wartet max. 5 s auf Kartendaten, dann Lobby-Return
-#   3. Flag-Reset        – reset_lobby_flags() vor/nach jedem Spiel auf beiden Seiten
-#   4. UI-Strenge        – Modi 1/2: kein Client-Marker im Picker; nur Host wählt
-#                          Modus 3: voller PvP-Picker mit Client-Marker
-#   5. Coop-Info-Box     – erscheint nur wenn Client tatsächlich handshaked ist
-#   1. IP-Validierung  – 4-Block-0–255-Check vor Connect, Errno-8-Schutz
-#   2. Handshake-Sync  – Client sendet request_lobby_state direkt nach TCP-
-#                        Connect; Host antwortet sofort; Client zeigt erst dann
-#                        "Verbunden", wenn der erste lobby_host-Snapshot eintrifft
-#   3. Echtzeit-Settings – HostLobby setzt _lobby_timer=999 für sofortigen
-#                          Broadcast; nach Settings-Rückkehr wird direkt gesendet
-#   4. Modus-abhängiger Picker – Modi 1/2: zentrierter Picker ohne Coop-Box
-#                                (Box nur wenn Client wirklich handshaked ist);
-#                                Modus 3: voller PvP-Picker mit Client-Marker
-#   5. HUD-Fix – Client zeigt "?" nur solange kein Snapshot da; fällt danach
-#                auf korrekte Werte zurück
+#  Changes from Phase 11.1:
+#   1. 3-Way Handshake – Host sends "start" → Client replies "ready_for_map"
+#                         → Host sends the map only then (timeout 0.5 s)
+#   2. Map Timeout      – Client waits max 5 s for map data, then returns to lobby
+#   3. Flag Reset       – reset_lobby_flags() before/after each game on both sides
+#   4. UI Strictness    – Modes 1/2: no client marker in picker; only host chooses
+#                          Mode 3: full PvP picker with client marker
+#   5. Coop Info Box    – appears only when client is actually handshaked
+#   1. IP Validation  – 4-block 0–255 check before connect, Errno-8 protection
+#   2. Handshake Sync  – Client sends request_lobby_state right after TCP
+#                        connect; host replies immediately; client shows "Connected"
+#                        only when the first lobby_host snapshot arrives
+#   3. Real-time Settings – HostLobby sets _lobby_timer=999 for instant
+#                           broadcast; after returning from settings, sends directly
+#   4. Mode-dependent Picker – Modes 1/2: centered picker without coop box
+#                               (box only when client is actually handshaked);
+#                               Mode 3: full PvP picker with client marker
+#   5. HUD Fix – Client shows "?" only while no snapshot available; then falls back
+#                to correct values
 # =============================================================================
 from __future__ import annotations
 import math
@@ -30,13 +30,13 @@ import pygame
 
 from settings import *
 
-# Phase 12: Audio-System
+# Phase 12: Audio system
 try:
     import sound_manager as _sound_mod
 except Exception:
     _sound_mod = None
 
-# ── UI-Farb- und Layout-Konstanten ────────────────────────────────────────────
+# ── UI Color and Layout Constants ──────────────────────────────────────────────
 MENU_BG        = (6, 8, 18)
 PANEL_BG       = (12, 18, 35)
 ACCENT         = (0, 200, 210)
@@ -102,7 +102,7 @@ CLASS_DESCRIPTIONS = {
 # ── Validation ────────────────────────────────────────────────────────────────
 
 def _validate_ip(ip: str) -> bool:
-    """Prüft ob ip eine gültige IPv4-Adresse ist (0.0.0.0 – 255.255.255.255)."""
+    """Checks if ip is a valid IPv4 address (0.0.0.0 – 255.255.255.255)."""
     if ip == "localhost":
         return True
     parts = ip.strip().split(".")
@@ -114,7 +114,7 @@ def _validate_ip(ip: str) -> bool:
         return False
 
 
-# ── Zeichenhelfer ─────────────────────────────────────────────────────────────
+# ── Drawing Helpers ───────────────────────────────────────────────────────────
 
 def _draw_bg(surface: pygame.Surface, t: float = 0.0) -> None:
     col = (20, 34, 54)
@@ -364,14 +364,14 @@ class TextInput:
                 self.error  = ""
 
 
-# ── Klassen-Auswahl-Widget ────────────────────────────────────────────────────
+# ── Class Selection Widget ───────────────────────────────────────────────────
 
 class ClassPicker:
     """
-    Drei Fahrzeugklassen als klickbare Glow-Kacheln.
+    Three vehicle classes as clickable glow tiles.
 
-    pvp_mode  = True  → PvP-Layout: Client-Klasse wird als Marker angezeigt
-    pvp_mode  = False → Koop/Solo: kein Client-Marker, optionale Info-Zeile darunter
+    pvp_mode  = True  → PvP layout: client class is shown as marker
+    pvp_mode  = False → Coop/Solo: no client marker, optional info line below
     """
     CLASSES  = list(CAR_CLASSES.keys())
     TILE_W   = 248
@@ -406,10 +406,10 @@ class ClassPicker:
              locked_classes: dict | None = None,
              show_coop_info: bool = False) -> None:
         """
-        locked_classes  – {label: class_name} Marker (nur PvP sinnvoll)
-        show_coop_info  – zeigt Koop-Hinweis unter den Kacheln (nur Modi 1/2
-                          UND Client tatsächlich verbunden)
-        In pvp_mode=False: Client-Marker werden komplett unterdrückt.
+        locked_classes  – {label: class_name} marker (only useful in PvP)
+        show_coop_info  – shows coop hint below tiles (only modes 1/2
+                           AND client actually connected)
+        In pvp_mode=False: client markers are completely suppressed.
         """
         for i, cls in enumerate(self.CLASSES):
             r      = self._rects[i]
@@ -440,7 +440,7 @@ class ClassPicker:
             surface.blit(desc, (r.x + 54, r.y + 36))
 
             stats = [
-                ("Tempo", cs["speed_mul"],       (0, 195, 100)),
+                ("Speed", cs["speed_mul"],       (0, 195, 100)),
                 ("Grip",  cs["grip_mod"] / 2.0,  ACCENT),
                 ("Sprit", 1.0 / cs["fuel_mul"],  ACCENT2),
             ]
@@ -457,7 +457,7 @@ class ClassPicker:
                     pygame.draw.rect(surface, scol,
                                      (bx, by + 14, fill, bh), border_radius=3)
 
-            # Phase 11.2: Client-Marker nur im PvP-Modus
+            # Phase 11.2: Client marker only in PvP mode
             if locked_classes and self.pvp_mode:
                 for lbl_txt, locked_cls in locked_classes.items():
                     if locked_cls == cls:
@@ -467,7 +467,7 @@ class ClassPicker:
                                      (r.x + r.w - tag.get_width() - 8,
                                       r.y + r.h - tag.get_height() - 6))
 
-        # Koop-Info nur wenn Client wirklich verbunden + Koop-Modus
+        # Coop info only when client is actually connected + coop mode
         if show_coop_info and not self.pvp_mode:
             self._draw_coop_info(surface)
 
@@ -478,7 +478,7 @@ class ClassPicker:
         surface.blit(lbl, ((SCREEN_W - lbl.get_width()) // 2, y))
 
 
-# ── Haupt-Menü ────────────────────────────────────────────────────────────────
+# ── Main Menu ─────────────────────────────────────────────────────────────────
 
 class MainMenu:
     def __init__(self, screen: pygame.Surface) -> None:
@@ -523,7 +523,7 @@ class MainMenu:
             pygame.display.flip()
 
 
-# ── Solo Klassen-Auswahl ──────────────────────────────────────────────────────
+# ── Solo Class Selection ──────────────────────────────────────────────────────
 
 class SoloClassPicker:
     """Phase 11.1: pvp_mode=False, no coop info (no client in solo)."""
@@ -562,12 +562,12 @@ class SoloClassPicker:
                 if self._btn_back.is_clicked(event):  return None
             self.screen.fill(MENU_BG);  _draw_bg(self.screen, self._t)
             _draw_title(self.screen, "SELECT VEHICLE", 52, self._title_f)
-            # Solo: show_coop_info immer False
+            # Solo: show_coop_info always False
             self._picker.draw(self.screen, show_coop_info=False)
             self._slider.draw(self.screen)
             spd_lbl, _ = self.SPEED_OPTIONS[self._speed_idx]
             orig = self._btn_speed.label
-            self._btn_speed.label = f"Tempo: {spd_lbl}"
+            self._btn_speed.label = f"Speed: {spd_lbl}"
             self._btn_speed.draw(self.screen, mouse)
             self._btn_speed.label = orig
             self._btn_start.draw(self.screen, mouse)
@@ -664,7 +664,7 @@ class HostSetupMenu:
             pygame.display.flip()
 
 
-# ── Client IP-Eingabe mit Validierung ─────────────────────────────────────────
+# ── Client IP Input with Validation ───────────────────────────────────────────
 
 class ClientSetupMenu:
     def __init__(self, screen: pygame.Surface) -> None:
@@ -835,16 +835,16 @@ class ClientSetupMenu:
                 y += 36
 
 
-# ── HOST LOBBY ────────────────────────────────────────────────────────────────
+# ── HOST LOBBY ────────────────────────────────────────────────────────
 
 class HostLobby:
     """
-    Persistente Lobby.
+    Persistent Lobby.
     Phase 11.1:
-     • _lobby_timer startet bei 999 → sofortiger Broadcast beim ersten Frame
-     • client_requests_state() → sofortiger Snapshot unabhängig vom Timer
-     • _client_handshaked: erst True wenn erstes lobby_client-Paket ankam
-     • show_coop_info: nur bei Koop + handshaked Client
+     • _lobby_timer starts at 999 → instant broadcast on first frame
+     • client_requests_state() → instant snapshot independent of timer
+     • _client_handshaked: only True when first lobby_client packet arrived
+     • show_coop_info: only for coop + handshaked client
     """
     NET_PORT      = 54321
     LOBBY_SEND_HZ = 10
@@ -896,7 +896,7 @@ class HostLobby:
         self._hint_f   = pygame.font.SysFont("Arial", 13)
 
         pvp = (mode == 3)
-        # Phase 11.2: Picker immer zentriert; pvp_mode steuert nur Marker-Anzeige
+        # Phase 11.2: Picker always centered; pvp_mode only controls marker display
         self._picker = ClassPicker(cx, SCREEN_H // 2 - 30, pvp_mode=pvp)
         self._client_class: str | None = None
         self._client_room_name: str = "Client"
@@ -909,10 +909,10 @@ class HostLobby:
         self._btn_settings = Button(cx, y0 + 126, "  Settings  ",        w=240, h=44)
         self._btn_back     = Button(cx, y0 + 186, "  Main Menu  ",       w=220, h=44)
 
-    # ── Haupt-Loop ────────────────────────────────────────────────────────────
+    # ── Main loop ────────────────────────────────────────────────────
 
     def run(self) -> str:
-        """Gibt "back" oder "settings" zurück."""
+        """Returns 'back' or 'settings'."""
         clock = pygame.time.Clock()
         while True:
             dt = clock.tick(60) / 1000.0;  self._t += dt
@@ -936,7 +936,7 @@ class HostLobby:
                     self._client_class     = None
                     self._client_handshaked = False
                 if self._btn_settings.is_clicked(event):
-                    return "settings"   # Netz bleibt am Leben
+                    return "settings"   # Network stays alive
                 if self._btn_back.is_clicked(event):
                     self._close(); return "back"
 
@@ -945,19 +945,19 @@ class HostLobby:
             if cl:
                 self._client_class      = cl.get("car_class", "balanced")
                 self._client_room_name  = cl.get("client_name", "Client")
-                self._client_handshaked = True   # erster Datenaustausch bestätigt
+                self._client_handshaked = True   # first data exchange confirmed
 
             if self._net.client_left():
                 self._client_class      = None
                 self._client_room_name  = "Client"
                 self._client_handshaked = False
 
-            # ── Phase 11.1: Sofort-Antwort auf request_lobby_state ───────────
+            # ── Phase 11.1: Immediate response to request_lobby_state ────────
             if self._net.client_requests_state():
                 self._send_lobby_packet()
-                self._lobby_timer = 0.0   # Timer zurücksetzen
+                self._lobby_timer = 0.0   # Reset timer
 
-            # ── Regulärer Broadcast-Timer ─────────────────────────────────────
+            # ── Regular Broadcast Timer ────────────────────────────────────────
             self._lobby_timer += dt
             if self._lobby_timer >= 1.0 / self.LOBBY_SEND_HZ:
                 self._lobby_timer = 0.0
@@ -990,9 +990,9 @@ class HostLobby:
             "client_class": client_cls,
         }
 
-        # ── Phase 11.3: Schritt 1 – Start wiederholt senden ─────────────────
-        # Alle 100 ms neu senden bis Client "ready_for_map" schickt oder 2s um.
-        # Für Solo/Koop (nicht PvP): einmal senden genügt.
+        # ── Phase 11.3: Step 1 – Send start repeatedly ──────────────────────
+        # Resend every 100 ms until client sends "ready_for_map" or 2s timeout.
+        # For Solo/Coop (not PvP): sending once is enough.
         if pvp and self._net.is_connected():
             RETRY_INTERVAL = 0.10   # 100 ms
             READY_TIMEOUT  = 2.0
@@ -1019,18 +1019,18 @@ class HostLobby:
             if not ready:
                 print("DEBUG: Host timeout – sending map without confirmation")
         else:
-            # Koop / Solo: ein Start-Paket reicht
+            # Coop / Solo: one start packet is enough
             self._net.send_start(start_pkt)
             print("DEBUG: Host sending start (co-op/solo)")
 
-        # ── Phase 11.3: Schritt 2 – Karte senden, dann Flags resetten ───────
+        # ── Phase 11.3: Step 2 – Send map, then reset flags ─────────────────
         print("DEBUG: Host sending map")
         self._net.send_map(map_data)
 
-        # Erst jetzt sicher resetten – Karte ist raus, Client-Inbox ist egal
+        # Only reset now – map is sent, client inbox doesn't matter
         self._net.reset_lobby_flags()
 
-        # ── Spiel starten ─────────────────────────────────────────────────────
+        # ── Start game ────────────────────────────────────────────────────────
         import settings as _s
         host_username = getattr(_s, "USERNAME", "").strip() or "Host"
         client_username = getattr(self, "_client_room_name", "Client")
@@ -1051,14 +1051,14 @@ class HostLobby:
         game._init_game_objects(track=generated)
         game.run()
 
-        # Zurück in Lobby: Sofort-Broadcast + State zurücksetzen
+        # Back in lobby: instant broadcast + reset state
         self._lobby_timer       = 999.0
         self._client_handshaked = False
         print("DEBUG: Host returned to lobby")
         return "settings" if getattr(game, "_return_to_settings", False) else "back"
 
     def _draw_waiting_for_ready(self) -> None:
-        """Kurzer Ladescreen während Host auf ready_for_map wartet."""
+        """Brief loading screen while host waits for ready_for_map."""
         self.screen.fill(MENU_BG)
         f = pygame.font.SysFont("Arial", 26, bold=True)
         t = f.render("Waiting for client readiness …", True, ACCENT)
@@ -1092,18 +1092,18 @@ class HostLobby:
             f"Track: {self.length} Tiles", True, info_col)
         self.screen.blit(info, ((SCREEN_W - info.get_width()) // 2, 94))
 
-        # Phase 11.2: locked_classes & coop_info korrekt nach Modus
+        # Phase 11.2: locked_classes & coop_info correctly per mode
         pvp       = (self.mode == 3)
         locked    = ({"Client": self._client_class}
                      if pvp and self._client_handshaked and self._client_class
                      else {})
         coop_info = (not pvp and self._client_handshaked)
-        self._picker.pvp_mode = pvp   # live aktualisieren
+        self._picker.pvp_mode = pvp   # update live
         self._picker.draw(self.screen,
                           locked_classes=locked,
                           show_coop_info=coop_info)
 
-        # Status-Zeile – unterscheidet TCP-offen vs. vollständig handshaked
+        # Status line – distinguishes TCP-open vs. fully handshaked
         if self._client_handshaked:
             st, sc = "● NAVIGATOR CONNECTED & READY", (50, 210, 100)
         elif self._net.is_connected():
@@ -1114,7 +1114,7 @@ class HostLobby:
         self.screen.blit(status, ((SCREEN_W - status.get_width()) // 2,
                                    SCREEN_H // 2 + 92))
 
-        # Start-Button: Modi 1+2 immer erlaubt (Solo/Koop); Modus 3 nur mit Client
+        # Start button: modes 1+2 always allowed (solo/coop); mode 3 only with client
         start_disabled = (pvp and not self._client_handshaked)
         self._btn_start.draw(self.screen, mouse, disabled=start_disabled)
         self._btn_kick.draw(self.screen, mouse, disabled=not self._net.is_connected())
@@ -1131,15 +1131,15 @@ class HostLobby:
         pygame.display.flip()
 
 
-# ── CLIENT LOBBY ──────────────────────────────────────────────────────────────
+# ── CLIENT LOBBY ──────────────────────────────────────────────────────
 
 class ClientLobby:
     """
     Phase 11.1:
-     • Zeigt "Handshake läuft…" bis erster lobby_host-Snapshot eintrifft
-     • Sendet request_lobby_state beim ersten Frame der Lobby-Loop
-     • Zeigt Modus/Länge/Tempo aus host_info sofort korrekt an
-     • pvp_mode des Pickers wird dynamisch aus host_mode aktualisiert
+     • Shows "Handshake in progress…" until first lobby_host snapshot arrives
+     • Sends request_lobby_state in first frame of lobby loop
+     • Shows mode/length/speed from host_info immediately and correctly
+     • pvp_mode of picker is dynamically updated from host_mode
     """
     NET_PORT        = 54321
     CONNECT_TIMEOUT = 5.0
@@ -1156,14 +1156,14 @@ class ClientLobby:
         self._host_info: dict = {}
         self._lobby_timer    = 0.0
         self._last_update    = 0.0
-        self._initial_sent   = False   # Phase 11.1: request einmalig senden
+        self._initial_sent   = False   # Phase 11.1: send request once
 
         cx = SCREEN_W // 2
         self._title_f  = pygame.font.SysFont("Arial", 38, bold=True)
         self._lbl_f    = pygame.font.SysFont("Arial", 17)
         self._status_f = pygame.font.SysFont("Arial", 14, bold=True)
         self._hint_f   = pygame.font.SysFont("Arial", 13)
-        # Picker startet als PvP; wird sofort nach erstem host_info aktualisiert
+        # Picker starts as PvP; updated immediately after first host_info
         self._picker   = ClassPicker(cx, SCREEN_H // 2 - 30, pvp_mode=True)
         y0 = SCREEN_H // 2 + 134
         self._btn_back = Button(cx, y0, "  Leave (ESC)  ",
@@ -1215,22 +1215,22 @@ class ClientLobby:
                     pygame.time.wait(100)
                 self._leave(); return
 
-            # Phase 11.1: im ersten Frame nochmal lobby anfordern
-            # (request_lobby_state wurde schon in connect() gesendet,
-            # aber erst hier sendet der Client auch seine Klasse)
+            # Phase 11.1: request lobby again in first frame
+            # (request_lobby_state was already sent in connect(),
+            # but only here the client sends its class too)
             if not self._initial_sent:
                 self._initial_sent = True
                 import settings as _s
                 client_name = getattr(_s, "USERNAME", "").strip() or "Client"
                 self._net.send_lobby({"car_class": self._picker.selected, "client_name": client_name})
 
-            # Host-Lobby-Info empfangen
+            # Receive host lobby info
             hl = self._net.get_host_lobby()
             if hl:
                 prev_handshaked = bool(self._host_info)
                 self._host_info   = hl
                 self._last_update = self._t
-                # Picker-Modus sofort aktualisieren
+                # Update picker mode immediately
                 host_mode = int(hl.get("mode", 3))
                 self._picker.pvp_mode = (host_mode == 3)
                 # Record successful connection in history on first handshake
@@ -1238,11 +1238,11 @@ class ClientLobby:
                     room_name = hl.get("room_name", f"Host ({self.host_ip})")
                     _history.add_or_update(self.host_ip, room_name, success=True)
 
-            # Start-Signal – Phase 11.3: ready_for_map SOFORT senden, BEVOR ClientGame gebaut wird
+            # Start signal – Phase 11.3: send ready_for_map IMMEDIATELY, BEFORE ClientGame is built
             start = self._net.get_start()
             if start:
                 print("DEBUG: Client received start packet – sending ready_for_map")
-                # Dreimal senden für Zuverlässigkeit (idempotent beim Host)
+                # Send three times for reliability (idempotent on host)
                 for _ in range(3):
                     try: self._net.send_ready_for_map()
                     except Exception: pass
@@ -1250,7 +1250,7 @@ class ClientLobby:
                 print("DEBUG: Client ruft _run_game()")
                 self._run_game(start)
                 if not self._net.is_connected(): return
-                # Zustand vollständig zurücksetzen
+                # Fully reset state
                 self._host_info    = {}
                 self._last_update  = 0.0
                 self._initial_sent = False
@@ -1260,7 +1260,7 @@ class ClientLobby:
                 print("DEBUG: Client returned to lobby")
                 continue
 
-            # Regulärer Klassen-Broadcast
+            # Regular class broadcast
             self._lobby_timer += dt
             if self._lobby_timer >= 1.0 / self.LOBBY_SEND_HZ:
                 self._lobby_timer = 0.0
@@ -1272,10 +1272,10 @@ class ClientLobby:
 
     def _run_game(self, start_data: dict) -> None:
         """
-        Phase 11.3: ready_for_map wurde bereits vor diesem Aufruf gesendet
-        (3× in der Lobby-Loop). Hier nur noch ClientGame starten.
-        KEIN reset_lobby_flags() VOR dem Spiel – die Karte ist möglicherweise
-        schon in _map_inbox und würde gelöscht.
+        Phase 11.3: ready_for_map was already sent before this call
+        (3× in the lobby loop). Here only start ClientGame.
+        NO reset_lobby_flags() BEFORE the game – the map might already
+        be in _map_inbox and would be deleted.
         """
         from client import ClientGame
         print("DEBUG: ClientLobby creating ClientGame …")
@@ -1290,13 +1290,13 @@ class ClientLobby:
             host_room_name   = host_room,
             client_room_name = client_username,
         )
-        # Phase 11.3: Signalisiert _connect_loop dass ready_for_map schon gesendet
+        # Phase 11.3: Signals _connect_loop that ready_for_map was already sent
         game._lobby_ready_sent = True
         print("DEBUG: ClientGame.run() starting")
         game.run()
         print("DEBUG: ClientGame.run() finished, return_to_lobby =",
               getattr(game, "_return_to_lobby", False))
-        # Flags NACH dem Spiel zurücksetzen
+        # Reset flags AFTER game
         if self._net.is_connected():
             self._net.reset_lobby_flags()
 
@@ -1319,7 +1319,7 @@ class ClientLobby:
         self.screen.fill(MENU_BG);  _draw_bg(self.screen, self._t)
         _draw_title(self.screen, "CLIENT LOBBY", 42, self._title_f, ACCENT)
 
-        # ── Info-Zeile mit Echtzeit-Settings vom Host ─────────────────────────
+        # ── Info line with real-time settings from host ───────────────────────
         host_cls   = self._host_info.get("host_class", "")
         mode_raw   = self._host_info.get("mode", None)
         length_raw = self._host_info.get("length", None)
@@ -1329,7 +1329,7 @@ class ClientLobby:
 
         modes_lbl  = {1: "Split Control", 2: "Panic Pilot", 3: "PvP Racing"}
         speed_lbl  = {0.70: "Slow", 1.00: "Normal", 1.40: "Fast"}
-        # Nächsten Treffer für speed_scale suchen
+        # Find closest match for speed_scale
         spd_text = "–"
         if speed_raw is not None:
             key = min(speed_lbl.keys(), key=lambda k: abs(k - float(speed_raw)))
@@ -1351,18 +1351,18 @@ class ClientLobby:
         info = self._lbl_f.render(info_str, True, info_col)
         self.screen.blit(info, ((SCREEN_W - info.get_width()) // 2, 94))
 
-        # ── Klassen-Picker ─────────────────────────────────────────────────────
+        # ── Class Picker ─────────────────────────────────────────────────────
         locked = ({"Host": host_cls}
                   if handshaked and host_cls and self._picker.pvp_mode
                   else {})
         self._picker.draw(self.screen,
                           locked_classes=locked,
-                          show_coop_info=False)  # Client zeigt keine Coop-Box
+                           show_coop_info=False)  # Client does not show coop box
 
-        # ── Verbindungsstatus ─────────────────────────────────────────────────
+        # ── Connection Status ────────────────────────────────────────────────
         since = self._t - self._last_update
         if not handshaked:
-            st, sc = "◌ Handshake running – waiting for host data …", (180, 180, 60)
+            st, sc = "◌ Handshake in progress – waiting for host data …", (180, 180, 60)
         elif since > 3.0:
             st, sc = "● Connected  –  Host is configuring settings …", (180, 180, 80)
         else:
@@ -1379,7 +1379,7 @@ class ClientLobby:
         pygame.display.flip()
 
 
-# ── Solo-Spiel starten ────────────────────────────────────────────────────────
+# ── Start Solo Game ───────────────────────────────────────────────────
 
 def _run_solo(screen: pygame.Surface,
               car_class: str, length: int, speed_scale: float) -> None:
@@ -1414,17 +1414,17 @@ def _run_solo(screen: pygame.Surface,
     game.run()
 
 
-# ── Phase 12: Audio-Einstellungen ─────────────────────────────────────────────
+        # ── Phase 12: Audio Settings ───────────────────────────────────────────
 
 class SettingsScene:
     """
-    Zeigt zwei Lautstärke-Schieberegler:
-      • Musik-Lautstärke
-      • Effekt-Lautstärke
+    Shows two volume sliders:
+      • Music Volume
+      • Effects Volume
 
-    Werte werden sofort an den SoundManager weitergeleitet und in
-    settings.py (MUSIC_VOLUME / SFX_VOLUME) gespeichert, damit sie
-    in der gesamten Sitzung global gültig bleiben.
+    Values are passed immediately to the SoundManager and saved in
+    settings.py (MUSIC_VOLUME / SFX_VOLUME) so they remain
+    globally valid throughout the session.
     """
 
     def __init__(self, screen: pygame.Surface) -> None:
@@ -1476,28 +1476,7 @@ class SettingsScene:
         fs = getattr(_s, "FULLSCREEN", False)
         self._btn_fullscreen.label = "  Fullscreen: ON   " if fs else "  Fullscreen: OFF  "
 
-    # ── Lautstärken live an SoundManager weitergeben ─────────────────────────
-
-    def _apply_volumes(self) -> None:
-        if _sound_mod is None:
-            return
-        sm = _sound_mod.get()
-        sm.set_music_volume(self._sl_music.value)
-        sm.set_sfx_volume(self._sl_sfx.value)
-        import settings as _s
-        _s.MUSIC_VOLUME = self._sl_music.value
-        _s.SFX_VOLUME   = self._sl_sfx.value
-        _s.save_settings()
-
-    def _toggle_fullscreen(self) -> None:
-        import settings as _s
-        _s.FULLSCREEN = not _s.FULLSCREEN
-        self.screen = _set_display_mode(_s.FULLSCREEN)
-        lbl = "  Fullscreen: ON   " if _s.FULLSCREEN else "  Fullscreen: OFF  "
-        self._btn_fullscreen.label = lbl
-        _s.save_settings()
-
-    # ── Haupt-Loop ────────────────────────────────────────────────────────────
+    # ── Main Loop ─────────────────────────────────────────────────────────────
 
     def run(self) -> None:
         clock = pygame.time.Clock()
@@ -1520,14 +1499,14 @@ class SettingsScene:
                         self._inp_username.active = False
                     else:
                         return
-                # Volumes live anwenden beim Ziehen
+                # Apply volumes live while dragging
                 if event.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP):
                     self._apply_volumes()
                 if self._btn_test.is_clicked(event):
                     self._apply_volumes()
                     if _sound_mod:
                         _sound_mod.get().play_pickup_fuel()
-                    self._test_hint = "▶ Test sound …"
+                    self._test_hint = "▶ Test sound ..."
                     self._test_t    = 1.2
                 if self._btn_fullscreen.is_clicked(event):
                     self._toggle_fullscreen()
@@ -1559,7 +1538,7 @@ class SettingsScene:
         self._sl_sfx.draw(self.screen)
         self._inp_username.draw(self.screen)
 
-        # Sound-Quelle-Hinweis
+        # Sound source hint
         if _sound_mod is not None:
             src_txt = "✓ Audio system active (procedurally generated sounds)"
             src_col = (60, 200, 100)
@@ -1582,9 +1561,9 @@ class SettingsScene:
             self.screen.blit(th, (SCREEN_W // 2 + 155,
                                    SCREEN_H // 2 + 121))
 
-        # Dateipfad-Hinweis
+        # File path hint
         hints = [
-            "Custom sounds: assets/sounds/  (music_menu.ogg, music_race.ogg, …)",
+            "Custom sounds: assets/sounds/  (music_menu.ogg, music_race.ogg, ..)",
             "Missing files are automatically replaced with procedural audio.",
         ]
         for i, h in enumerate(hints):
@@ -1595,7 +1574,7 @@ class SettingsScene:
         pygame.display.flip()
 
 
-# ── Einstiegspunkt ────────────────────────────────────────────────────────────
+# ── Entry Point ────────────────────────────────────────────────────────────────
 
 def main() -> None:
     # Load persisted settings before initialising the display
@@ -1616,7 +1595,7 @@ def main() -> None:
     except Exception:
         pass  # scrap not available on all platforms; subprocess fallback will be used
 
-    # ── Phase 12: Audio-System initialisieren ─────────────────────────────────
+    # ── Phase 12: Initialize audio system ───────────────────────────
     _sm = None
     if _sound_mod is not None:
         _sm = _sound_mod.get()
@@ -1628,7 +1607,7 @@ def main() -> None:
     last_host_settings: dict | None = None
 
     while True:
-        # Menü-Musik starten (nach Rückkehr aus dem Spiel)
+        # Start menu music (after returning from game)
         if _sm:
             _sm.play_music("menu")
 
@@ -1659,7 +1638,7 @@ def main() -> None:
                 "speed_idx": settings._speed_idx,
                 "room_name": room_name,
             }
-            # ── Phase 11.1: Lobby-Settings-Schleife mit persistentem Netz ────
+            # ── Phase 11.1: Lobby-Settings loop with persistent net ────────────
             existing_net = None
             while True:
                 if _sm: _sm.play_music("menu")
@@ -1669,7 +1648,7 @@ def main() -> None:
                 outcome = lobby.run()
 
                 if outcome == "settings":
-                    # Netz bleibt am Leben – Client wartet in seiner Lobby
+                    # Network stays alive – Client waits in their lobby
                     existing_net = lobby._net
                     result2 = HostSetupMenu(screen).run(
                         prefill={"mode": mode, "length": length,
@@ -1684,7 +1663,7 @@ def main() -> None:
                     continue
 
                 existing_net = None
-                break   # "back" → Hauptmenü
+                break   # "back" → main menu
             if _sm: _sm.engine_stop()
 
         elif choice == "client":

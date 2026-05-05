@@ -1,5 +1,5 @@
 # =============================================================================
-#  car.py  –  Panic Pilot | Auto-Physik (Logik) & Rendering (Phase 9)
+#  car.py  –  Panic Pilot | Car physics (logic) & rendering (Phase 9)
 # =============================================================================
 from __future__ import annotations
 import math
@@ -7,17 +7,17 @@ import pygame
 from settings   import *
 from car_state  import CarState
 
-# Phase 6.2 – Effekt-Konstanten
+# Phase 6.2 – Effect Constants
 _OIL_SPIN_GRIP     = 0.08
 _BOOST_ACCEL       = 900.0
 _BOOST_MAX_SPEED   = 780.0
 
 
-# ─── Sprite-Aufbau ────────────────────────────────────────────────────────────
+# ─── Sprite construction ─────────────────────────────────────────────────────────
 
 def _build_car_surface(body_color: tuple = (210, 45, 45),
                        W: int = 24, H: int = 36) -> pygame.Surface:
-    """Top-Down-Kart-Sprite, SRCALPHA. Größe variabel für Klassen."""
+    """Top-down kart sprite, SRCALPHA. Size variable for classes."""
     surf = pygame.Surface((W, H), pygame.SRCALPHA)
     pygame.draw.rect(surf, body_color, (3, 5, W - 6, H - 10), border_radius=5)
     pygame.draw.rect(surf, LIGHT_BLUE, (5, 7, W - 10, 9), border_radius=2)
@@ -30,15 +30,15 @@ def _build_car_surface(body_color: tuple = (210, 45, 45),
     pygame.draw.rect(surf, dark, (W // 2 - 1, 17, 2, H - 23))
     return surf
 
-# Farben für Standard-Klasse
+# Colors for standard class
 CAR_COLOR_HOST   = (210,  45,  45)
 CAR_COLOR_CLIENT = ( 30, 100, 210)
 
 
 class Car:
     """
-    Koppelt CarState mit Physik-Logik und Rendering.
-    car_class steuert Physik + Sprite (Phase 9).
+    Couples CarState with physics logic and rendering.
+    car_class controls physics + sprite (Phase 9).
     """
 
     SPEED_DISPLAY_SCALE = 0.47
@@ -51,14 +51,14 @@ class Car:
         self.car_class   = car_class
         self._body_color = body_color
         self._rebuild_sprite()
-        # Phase 6.2 – Effekt-Timer
+        # Phase 6.2 – Effect timers
         self.boost_timer: float = 0.0
         self.spin_timer:  float = 0.0
-        # Phase 7 – Item-Inventar
+        # Phase 7 – Item inventory
         self.inventory: str | None = None
 
     def _rebuild_sprite(self) -> None:
-        """Baut den Sprite neu auf (nach Klassenänderung)."""
+        """Rebuilds the sprite (after class change)."""
         cs = CAR_CLASSES.get(self.car_class, CAR_CLASSES["balanced"])
         self.SPRITE_W = cs["sprite_w"]
         self.SPRITE_H = cs["sprite_h"]
@@ -67,7 +67,7 @@ class Car:
         self._scale_cache: dict = {}
 
     def set_class(self, car_class: str) -> None:
-        """Ändert die Fahrzeugklasse und rebuilt den Sprite."""
+        """Changes the vehicle class and rebuilds the sprite."""
         if car_class != self.car_class and car_class in CAR_CLASSES:
             self.car_class = car_class
             self._rebuild_sprite()
@@ -140,7 +140,7 @@ class Car:
             fwd_cap = max_speed   * CURB_SPEED_FACTOR
             rev_cap = CAR_MAX_REVERSE * CURB_SPEED_FACTOR
         else:
-            # Asphalt: grip_mod aus Klasse skaliert theme-Grip additiv
+            # Asphalt: grip_mod from class scales theme grip additively
             effective = max(0.78 if eff_grip < 1.0 else 0.2,
                             eff_grip * cs["grip_mod"])
             fwd_cap = max_speed   * min(1.0, effective)
@@ -155,7 +155,7 @@ class Car:
         s.x += math.sin(rad) * s.speed * dt
         s.y -= math.cos(rad) * s.speed * dt
 
-    # ── Rendering ─────────────────────────────────────────────────────────────
+    # ── Rendering ───────────────────────────────────────────────────────
 
     def draw(self, surface: pygame.Surface,
              off_x: int = 0, off_y: int = 0, zoom: float = 1.0) -> None:

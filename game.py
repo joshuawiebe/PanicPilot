@@ -1,12 +1,12 @@
 # =============================================================================
-#  game.py  –  Panic Pilot | Haupt-Spielschleife (Phase 5.3)
+#  game.py  –  Panic Pilot | Main game loop (Phase 5.3)
 # =============================================================================
 #
-#  Phase 5.3 Änderungen:
-#    1. Props       – PropManager erzeugt/rendert dekorative Biom-Objekte
-#    2. PvP-Start   – Modus 3: Autos starten nebeneinander (side_offset)
-#    3. Pause       – P-Taste togglet _paused; Guard in update() + Overlay
-#    4. Speed Scale – self.speed_scale skaliert dt bei apply_input()
+#  Phase 5.3 changes:
+#    1. Props       – PropManager creates/renders decorative biome objects
+#    2. PvP start   – Mode 3: cars start side-by-side (side_offset)
+#    3. Pause       – P key toggles _paused; guard in update() + overlay
+#    4. Speed Scale – self.speed_scale scales dt in apply_input()
 # =============================================================================
 from __future__ import annotations
 import math
@@ -41,7 +41,7 @@ try:
 except Exception:
     _main_mod = None
 
-# Phase 12: Audio (lazy import – läuft auch ohne sound_manager.py)
+# Phase 12: Audio (lazy import – works without sound_manager.py too)
 try:
     import sound_manager as _sound_mod
 
@@ -60,7 +60,7 @@ COUNTDOWN_STEPS = [3, 2, 1]
 COUNTDOWN_STEP_DURATION = 1.0
 GO_DISPLAY_DURATION = 1.2
 
-# Geschwindigkeits-Skalierung: skaliert dt bei apply_input()
+# Speed scaling: scales dt in apply_input()
 SPEED_SCALE_SLOW = 0.70
 SPEED_SCALE_NORMAL = 1.00
 SPEED_SCALE_FAST = 1.40
@@ -68,10 +68,10 @@ SPEED_SCALE_FAST = 1.40
 
 class Game:
     """
-    Basis-Spielschleife.
-    self.cars[0] = Host/Solo, self.cars[1] = Client (Modus 3)
-    self._paused: bool        – P-Taste
-    self.speed_scale: float   – Geschwindigkeits-Skalierung
+    Base game loop.
+    self.cars[0] = Host/Solo, self.cars[1] = Client (Mode 3)
+    self._paused: bool        – P key
+    self.speed_scale: float   – Speed scaling
     """
 
     def __init__(
@@ -107,15 +107,15 @@ class Game:
         self.mode = 1
         self.pings: list[list] = []
         self._return_to_menu = False
-        # Phase 12: Countdown-Schritt-Tracking für Sound
+        # Phase 12: Countdown step tracking for sound
         self._last_cdstep = -1
-        self._return_to_lobby = False  # Phase 11: Lobby-Return
+        self._return_to_lobby = False  # Phase 11: Lobby return
         self._lobby_initiator = ""  # "self" | "remote"
         self._paused = False
         self.speed_scale = SPEED_SCALE_NORMAL
         self._pause_btn_rects: dict = {}  # populated by draw_pause_overlay
 
-        # Klassen sind vor dem Rennen gelockt – kein In-Game-Wechsel
+        # Classes locked before race – no in-game switching
         self._locked_class0 = locked_class0
         self._locked_class1 = locked_class1
 
@@ -142,13 +142,13 @@ class Game:
         sx, sy, sa = self.track.start_x, self.track.start_y, self.track.start_angle
         rad = math.radians(sa)
 
-        # PvP: Autos nebeneinander statt hintereinander
-        # Senkrecht-Vektor zur Fahrtrichtung
+        # PvP: Cars side-by-side instead of behind each other
+        # Perpendicular vector to driving direction
         side_x = math.cos(rad)
         side_y = math.sin(rad)
         side_offset = 36
 
-        # Klassen aus den gesperrten Werten (Lobby-Auswahl)
+        # Classes from locked values (lobby selection)
         prev_class0 = getattr(self, "_locked_class0", "balanced")
         prev_class1 = getattr(self, "_locked_class1", "balanced")
 
@@ -193,8 +193,8 @@ class Game:
             self.track, theme=self.track.theme, seed=prop_seed
         )
 
-        # Kanister mit IDs (für Netzwerk-Sync)
-        # Im Modus 3 (PvP) pvp_mode aktivieren damit collected_by korrekt arbeitet
+        # Canisters with IDs (for network sync)
+        # In mode 3 (PvP) activate pvp_mode so collected_by works correctly
         pvp = self.mode == 3
         self.canisters: list[FuelCanister] = []
         for i, (cx, cy) in enumerate(self.track.canister_positions()):
@@ -237,7 +237,7 @@ class Game:
         self._paused = False
         self._init_game_objects(track=track)
 
-    # ─── Events ──────────────────────────────────────────────────────────────
+    # ─── Events ───────────────────────────────────────────────────────────
 
     def handle_events(self) -> None:
         for event in pygame.event.get():
@@ -250,7 +250,7 @@ class Game:
             elif event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_ESCAPE, pygame.K_p):
                     if self.game_over or self.winner:
-                        # End-screen: ESC = Menü
+                        # End-screen: ESC = Menu
                         if event.key == pygame.K_ESCAPE:
                             self.running = False
                     else:
@@ -269,7 +269,7 @@ class Game:
                 elif event.key == pygame.K_m and (self.game_over or self.winner):
                     self.running = False
                     self._return_to_menu = True
-                # Pause-Menü Shortcuts
+                # Pause menu shortcuts
                 elif self._paused:
                     if event.key == pygame.K_l:
                         self._do_return_to_lobby()
@@ -279,7 +279,7 @@ class Game:
                     self._on_keydown(event)
 
     def _handle_pause_click(self, pos: tuple) -> None:
-        """Verarbeitet Mausklicks auf die Pause-Menü-Buttons."""
+        """Processes mouse clicks on pause menu buttons."""
         if not self._paused:
             return
         action = None
@@ -295,7 +295,7 @@ class Game:
             self.running = False
 
     def _do_return_to_lobby(self) -> None:
-        """Setzt Lobby-Return-Flag und beendet das Rennen (Phase 11)."""
+        """Sets lobby return flag and ends the race (Phase 11)."""
         self._return_to_lobby = True
         self._lobby_initiator = "self"
         self._paused = False
@@ -304,7 +304,7 @@ class Game:
     def _on_keydown(self, event) -> None:
         pass
 
-    # ─── Update ──────────────────────────────────────────────────────────────
+    # ─── Update ───────────────────────────────────────────────────────────
 
     def update(
         self,
@@ -312,7 +312,7 @@ class Game:
         input_override: Optional[InputState] = None,
         input_car1: Optional[InputState] = None,
     ) -> None:
-        # Pause-Guard: bei Pause komplett einfrieren
+        # Pause guard: completely freeze when paused
         if self._paused:
             return
 
@@ -320,14 +320,14 @@ class Game:
         for p in self.pings:
             p[2] -= dt
 
-        # Sicherstellen, dass die Variable existiert, egal was in __init__ passiert
+        # Ensure variable exists, regardless of what happens in __init__
         if not hasattr(self, "_last_cdstep"):
             self._last_cdstep = -1
 
         # Countdown
         if self._countdown > 0:
             self._countdown -= dt
-            # ── Phase 12: Countdown-Beep bei jedem Schritt ───────────────────
+            # ── Phase 12: Countdown beep at each step ────────────────────
             cdstep = int(self._countdown)
             if cdstep != self._last_cdstep:
                 self._last_cdstep = cdstep
@@ -337,7 +337,7 @@ class Game:
                 self._countdown = 0.0
                 self._go_timer = GO_DISPLAY_DURATION
                 self._race_started = True
-                # ── GO-Sound + Motor starten ──────────────────────────────────
+                # ── GO sound + engine start ───────────────────────────────
                 if _SM:
                     _SM.play_countdown_go()
                     _SM.engine_start()
@@ -355,11 +355,11 @@ class Game:
             self.camera.update(self.cars[0].state.x, self.cars[0].state.y, dt)
             return
 
-        # Speed-Scale: dt bei apply_input skalieren
-        # Höherer Wert → stärkere Beschleunigung + höhere Endgeschwindigkeit
+        # Speed-Scale: scale dt in apply_input
+        # Higher value → stronger acceleration + higher top speed
         scaled_dt = dt * self.speed_scale
 
-        # ── Auto 0 ────────────────────────────────────────────────────────────
+        # ── Car 0 ─────────────────────────────────────────────────────────
         s0 = self.cars[0].state
         inp0 = (
             input_override
@@ -374,7 +374,7 @@ class Game:
         s0.x, s0.y, s0.speed = self.walls.resolve_all(
             s0.x, s0.y, s0.speed, self.cars[0].get_radius()
         )
-        # ── Phase 12: Wand-Kollision erkennen ────────────────────────────────
+            # ── Phase 12: Detect wall collision ──────────────────────────
         if _SM and abs(_pre_speed0 - s0.speed) > 40:
             _SM.play_collision(min(1.0, abs(_pre_speed0) / 400.0))
 
@@ -390,7 +390,7 @@ class Game:
         if s0.fuel <= 0.0:
             self.game_over = True
 
-        # ── Auto 1 (Modus 3) ─────────────────────────────────────────────────
+        # ── Car 1 (Mode 3) ──────────────────────────────────────────────
         if self.mode == 3 and input_car1 is not None:
             s1 = self.cars[1].state
             surf1 = self.track.surface_at(s1.x, s1.y)
@@ -411,7 +411,7 @@ class Game:
                 s1.fuel = max(0.0, s1.fuel)
             self._resolve_car_collision()
 
-        # ── Pickups: Kanister / Boost-Pads / Ölflecken / ItemBoxen ─────────
+        # ── Pickups: Canisters / Boost Pads / Oil slicks / Item boxes ──────
         for c in self.canisters:
             c.update(dt)
         for b in self.boosts:
@@ -431,7 +431,7 @@ class Game:
         self.entity_particles.update(dt)
 
         # ── Boomerangs ────────────────────────────────────────────────────────
-        # Target-Positionen für RedBoomerang
+        # Target positions for RedBoomerang
         pos = [
             (c.state.x, c.state.y)
             for c in self.cars
@@ -443,7 +443,7 @@ class Game:
             if isinstance(brang, GreenBoomerang):
                 brang.update(dt, self.track)
             else:
-                # Finde nächstes nicht-eigenes Auto als Ziel
+                # Find next non-own car as target
                 tx, ty = None, None
                 for i, car in enumerate(self.cars):
                     pid = PLAYER_HOST if i == 0 else PLAYER_CLIENT
@@ -451,7 +451,7 @@ class Game:
                         tx, ty = car.state.x, car.state.y
                         break
                 brang.update(dt, self.track, tx, ty)
-            # Kollision mit allen Autos prüfen
+            # Check collision with all cars
             for i, car in enumerate(self.cars):
                 if self.mode != 3 and i == 1:
                     continue
@@ -459,11 +459,11 @@ class Game:
                 if brang.check_hit(car.state.x, car.state.y, pid):
                     car.spin_timer = OilSlick.SPIN_DURATION
                     self.entity_particles.emit_boost_sparks(car.state.x, car.state.y)
-        # Inaktive Boomerangs entfernen (nicht öfter als nötig)
+        # Remove inactive boomerangs (not more often than needed)
         if any(not b.active for b in self.boomerangs):
             self.boomerangs = [b for b in self.boomerangs if b.active]
 
-        # ── Win Condition: Kein Sprit ─────────────────────────────────────────
+        # ── Win Condition: Out of fuel ───────────────────────────────────
         if self.winner is None:
             if s0.fuel <= 0.0:
                 self.winner = "client" if self.mode == 3 else None
@@ -478,7 +478,7 @@ class Game:
                     if _SM:
                         _SM.engine_stop()
 
-        # ── Win Condition: Ziellinie ──────────────────────────────────────────
+        # ── Win Condition: Finish line ───────────────────────────────────
         if self.winner is None and not self.game_over:
             if self.track.crosses_finish(s0.x, s0.y, self.cars[0].get_radius()):
                 self.winner = "host"
@@ -516,7 +516,7 @@ class Game:
         self.particles.update(dt)
         self.elapsed_time += dt
 
-        # ── Phase 12: Motor-Sound live aktualisieren ──────────────────────────
+        # ── Phase 12: Engine sound live update ────────────────────────────
         if _SM:
             from settings import CAR_MAX_SPEED
 
@@ -525,7 +525,7 @@ class Game:
         if self.mode == 1:
             self.camera.zoom = 1.0
 
-    # ─── Physik-Helfer ───────────────────────────────────────────────────────
+    # ─── Physics helpers ────────────────────────────────────────────────
 
     def _get_grip(self, surface: str, car: "Car" = None) -> float:
         """Grip per surface + theme + car class (Phase 9)."""
@@ -560,9 +560,9 @@ class Game:
         surface: str = "asphalt",
         use_item: bool = False,
     ) -> None:
-        """Kanister, Boost-Pads, Ölflecken, ItemBoxen und Item-Aktivierung."""
+        """Canisters, boost pads, oil slicks, item boxes, and item activation."""
         s = car.state
-        # Kanister
+        # Canisters
         for c in self.canisters:
             if c.try_pickup(s.x, s.y, player_id=player_id):
                 s.fuel = min(FUEL_MAX, s.fuel + FUEL_CANISTER_VALUE)
@@ -571,18 +571,18 @@ class Game:
                     self._fuel_flash = 0.5
                     if _SM:
                         _SM.play_pickup_fuel()
-        # Boost-Pads
+        # Boost pads
         for b in self.boosts:
             if b.try_trigger(s.x, s.y, player_id=player_id):
                 car.boost_timer = BoostPad.BOOST_DURATION
                 if s.speed < BoostPad.BOOST_SPEED * 0.5:
                     s.speed = BoostPad.BOOST_SPEED * 0.5
                 self.entity_particles.emit_boost_sparks(b.x, b.y)
-        # Ölflecken
+        # Oil slicks
         for o in self.oils:
             if o.try_trigger(s.x, s.y, player_id=player_id):
                 car.spin_timer = OilSlick.SPIN_DURATION
-        # ItemBoxen – nur wenn Inventar leer
+        # Item boxes – only when inventory empty
         for ib in self.item_boxes:
             item = ib.try_pickup(s.x, s.y, player_id=player_id)
             if item and car.inventory is None:
@@ -590,10 +590,10 @@ class Game:
                 self.entity_particles.emit_boost_sparks(ib.x, ib.y)
                 if player_id == PLAYER_HOST and _SM:
                     _SM.play_pickup_item()
-        # Item benutzen (SPACE / use_item Flag)
+        # Use item (SPACE / use_item flag)
         if use_item and car.inventory is not None:
             self._use_item(car, player_id)
-        # Oberflächen-Staub
+        # Surface dust
         theme_name = getattr(getattr(self.track, "theme", None), "name", "standard")
         emit_dust = surface == "grass" or theme_name in ("ice", "desert")
         if emit_dust and abs(s.speed) > 25:
@@ -605,7 +605,7 @@ class Game:
             self.entity_particles.emit_dust(s.x, s.y, s.angle, s.speed, dust_type)
 
     def _use_item(self, car: "Car", player_id: int) -> None:
-        """Item aus dem Inventar aktivieren – alle Items zentral hier."""
+        """Activate item from inventory – all items handled centrally here."""
         s = car.state
         item = car.inventory
         rad = math.radians(s.angle)
@@ -618,7 +618,7 @@ class Game:
             self.entity_particles.emit_boost_sparks(s.x, s.y)
 
         elif item == "oil_drop":
-            # 80px hinter dem Auto ablegen (entgegen Fahrtrichtung)
+            # Drop 80px behind car (against driving direction)
             drop_dist = 80.0
             ox = s.x - sin_a * drop_dist
             oy = s.y + cos_a * drop_dist
@@ -629,7 +629,7 @@ class Game:
 
         elif item == "green_boomerang":
             bid = len(self.boomerangs)
-            # 40px vor dem Auto spawnen
+            # Spawn 40px in front of car
             bx = s.x + sin_a * 40
             by = s.y - cos_a * 40
             self.boomerangs.append(
@@ -653,7 +653,7 @@ class Game:
         car.inventory = None
 
     def _cycle_car_class(self, car: "Car", player_id: int) -> None:
-        """Wechselt die Fahrzeugklasse (balanced → speedster → tank → …)."""
+        """Switches the vehicle class (balanced → speedster → tank → …)."""
         idx = CLASS_ORDER.index(car.car_class) if car.car_class in CLASS_ORDER else 0
         new = CLASS_ORDER[(idx + 1) % len(CLASS_ORDER)]
         cs = CAR_CLASSES[new]
@@ -663,9 +663,9 @@ class Game:
 
     def reset_for_mode(self, new_mode: int) -> None:
         """
-        Modus-Wechsel: pvp_mode auf allen Entitäten aktualisieren und
-        collected_by leeren, damit beide Spieler alle Objekte einsammeln können.
-        Wird aufgerufen wenn Host zwischen Modus 1/2/3 wechselt.
+        Mode change: update pvp_mode on all entities and
+        clear collected_by so both players can collect all objects.
+        Called when host switches between modes 1/2/3.
         """
         pvp = new_mode == 3
         for obj in (*self.canisters, *self.boosts, *self.oils, *self.item_boxes):
@@ -698,7 +698,7 @@ class Game:
         self.camera.zoom += (target_zoom - self.camera.zoom) * 0.05
         self.camera.update(s0.x, s0.y, dt)
 
-    # ─── Rendering ───────────────────────────────────────────────────────────
+    # ─── Rendering ────────────────────────────────────────────────────────
 
     def draw_world(self, surface: pygame.Surface) -> None:
         zoom = self.camera.zoom
@@ -707,7 +707,7 @@ class Game:
         surface.fill(bg_color)
         self.track.draw(surface, off_x, off_y, zoom)
         self.walls.draw(surface, off_x, off_y, zoom)
-        # Props: rein kosmetisch, hinter Spielobjekten
+        # Props: purely cosmetic, behind game objects
         self.props.draw(surface, off_x, off_y, zoom)
         self.particles.draw(surface, off_x, off_y, zoom)
         self.entity_particles.draw(surface, off_x, off_y, zoom)
@@ -956,7 +956,7 @@ class Game:
         )
 
     def draw_pause_overlay(self, surface: pygame.Surface) -> None:
-        """Erweitertes Pause-Overlay mit Lobby/Quit-Buttons (Phase 11)."""
+        """Enhanced pause overlay with lobby/quit buttons (Phase 11)."""
         overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 160))
         surface.blit(overlay, (0, 0))
@@ -971,7 +971,7 @@ class Game:
         total_h = len(labels) * (bh + gap) - gap
         y0 = SCREEN_H // 2 - total_h // 2 + 30
 
-        # Titel
+        # Title
         lbl = self._pause_font.render("PAUSE", True, CYAN)
         shd = self._pause_font.render("PAUSE", True, BLACK)
         tx = cx - lbl.get_width() // 2

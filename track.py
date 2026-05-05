@@ -1,17 +1,17 @@
 # =============================================================================
-#  track.py  –  Panic Pilot | Tile-System + Sektor-Generator + Themes (Phase 5.2)
+#  track.py  –  Panic Pilot | Tile system + sector generator + themes (Phase 5.2)
 # =============================================================================
 #
-#  NEU (Phase 5.2):
-#    - Theme-System: Farbpalette pro Biom (theme.py)
-#    - Tile-Boundary-Walls: unsichtbare Wände an Kachelrändern
-#      → Auto kann neben der Fahrbahn fahren, fällt aber nicht aus der Welt
-#    - Erweiterte Sektoren: S-Kurven, breite Haarnadelkurven, lange Geraden
-#    - Kanister-Dichte leicht erhöht; gleichmäßiger über Strecke verteilt
+#  NEW (Phase 5.2):
+#    - Theme system: color palette per biome (theme.py)
+#    - Tile boundary walls: invisible walls at tile edges
+#      → Car can drive next to the road but doesn't fall out of the world
+#    - Extended sectors: S-curves, wide hairpin curves, long straights
+#    - Canister density slightly increased; more evenly distributed along track
 #
-#  Erweiterungs-Hooks (Phase 6):
-#    - TrackTile.spawn_points() → Positionen für Items/Rampen/Boost-Pads
-#    - Track.theme → physics-hooks (slip, grip) für Eis-/Sand-Physik
+#  Extension hooks (Phase 6):
+#    - TrackTile.spawn_points() → positions for items/ramps/boost pads
+#    - Track.theme → physics hooks (slip, grip) for ice/sand physics
 # =============================================================================
 from __future__ import annotations
 import math
@@ -20,9 +20,9 @@ from typing import Optional
 import pygame
 from settings import *
 
-# Lazy-Import um Zirkelbezüge zu vermeiden
+# Lazy import to avoid circular references
 def _get_theme_colors(theme):
-    """Gibt Theme-Farben als dict zurück, oder Default-Farben wenn kein Theme."""
+    """Returns theme colors as dict, or default colors if no theme."""
     if theme is None:
         return {
             "grass_dark":  GRASS_DARK,
@@ -41,7 +41,7 @@ def _get_theme_colors(theme):
         "centerline":  theme.centerline,
     }
 
-# ── Tile-Konstanten ───────────────────────────────────────────────────────────
+# ── Tile constants ───────────────────────────────────────────────────────
 TILE_SIZE = 800
 ROAD_W    = TILE_SIZE // 3
 INNER_R   = TILE_SIZE // 3
@@ -57,10 +57,10 @@ CURVE_TL   = "TL"
 CURVE_TR   = "TR"
 FINISH_H   = "FH"
 FINISH_V   = "FV"
-NARROW_H   = "NH"   # Phase 7.2 – schmale Fahrbahn horizontal
-NARROW_V   = "NV"   # Phase 7.2 – schmale Fahrbahn vertikal
+NARROW_H   = "NH"   # Phase 7.2 – narrow roadway horizontal
+NARROW_V   = "NV"   # Phase 7.2 – narrow roadway vertical
 
-# Fahrbahnbreite für Narrow-Tiles: 1/5 statt 1/3 des Tiles
+# Roadway width for Narrow-Tiles: 1/5 instead of 1/3 of tile
 NARROW_W = 5   # Divisor: T // NARROW_W
 
 EAST, SOUTH, WEST, NORTH = 0, 1, 2, 3
@@ -95,27 +95,27 @@ _ARC = {
 }
 
 # ── Sektor-Definitionen ────────────────────────────────────────────────────────
-# "S"=Gerade, "L"=Links, "R"=Rechts
-# Phase 5.2: neue Muster
+# "S"=Straight, "L"=Left, "R"=Right
+# Phase 5.2: new patterns
 SECTORS = {
-    # Hochgeschwindigkeits-Passagen (kurz gehalten – max 4 Geraden)
+    # High-speed passages (kept short – max 4 straights)
     "high_speed":       ["S", "S", "S", "S"],
     "high_speed_long":  ["S", "S", "S", "S", "S"],
-    # Schikanen (kurz + mittel)
+    # Chicanes (short + medium)
     "chicane_lr":       ["S", "L", "S", "R"],
     "chicane_rl":       ["S", "R", "S", "L"],
     "double_chicane":   ["S", "L", "S", "R", "S", "L", "S", "R"],
-    # Technisch
+    # Technical
     "technical_l":      ["L", "S", "L", "S", "R"],
     "technical_r":      ["R", "S", "R", "S", "L"],
     "hairpin_l":        ["L", "L", "S"],
     "hairpin_r":        ["R", "R", "S"],
-    # S-Kurven (bevorzugt)
+    # S-curves (preferred)
     "s_curve_lr":       ["L", "S", "R", "S"],
     "s_curve_rl":       ["R", "S", "L", "S"],
     "s_curve_tight":    ["L", "R", "S", "L", "R"],
     "s_curve_long":     ["L", "S", "S", "R", "S", "S"],   # NEU
-    # Gemischt (kurvereich)
+    # Mixed (curve-rich)
     "mixed":            ["S", "S", "L", "S", "S", "R"],
     "mixed_curvy":      ["L", "S", "R", "S", "L"],        # NEU
     "flowing":          ["S", "L", "S", "S", "R", "S"],
@@ -138,89 +138,89 @@ def _turn_heading(heading: int, direction: str) -> tuple[str, int]:
 
 # ── Tile-Boundary-Wall-Generierung ────────────────────────────────────────────
 
-# Wanddicke außen (px) – breit genug damit Auto nicht durchfährt
+# Wall thickness outside (px) – wide enough so car doesn't drive through
 _BOUNDARY_THICKNESS = 80
 
 def _tile_boundary_walls(tile_type: str, wx: float, wy: float) -> list[tuple]:
     """
-    Gibt Liste von (x, y, w, h) Welt-Koordinaten für Boundary-Wände zurück.
-    Wände liegen an den Rändern der Tile, nicht an der Fahrbahn.
-    So kann man über den Randstreifen fahren, aber nicht aus der Tile heraus.
+    Returns list of (x, y, w, h) world coordinates for boundary walls.
+    Walls are at tile edges, not at the roadway.
+    This allows driving on the shoulder but not leaving the tile.
 
-    Prinzip: Jede Tile bekommt 4 schmale Randwände (oben, unten, links, rechts).
-    Die Öffnungen (Verbindungen zur nächsten Tile) werden ausgespart.
+    Principle: Each tile gets 4 narrow boundary walls (top, bottom, left, right).
+    The openings (connections to next tile) are omitted.
     """
     T  = TILE_SIZE
-    bw = _BOUNDARY_THICKNESS   # Wanddicke
+    bw = _BOUNDARY_THICKNESS   # Wall thickness
     r1 = INNER_R               # = T//3
     r2 = OUTER_R               # = 2*T//3
 
     walls = []
 
     if tile_type in (STRAIGHT_H, FINISH_H):
-        # Fahrt horizontal → oben und unten blockieren
+        # Horizontal travel → block top and bottom
         walls.append((wx,       wy,          T,  bw))
         walls.append((wx,       wy + T - bw, T,  bw))
 
     elif tile_type in (STRAIGHT_V, FINISH_V):
-        # Fahrt vertikal → links und rechts blockieren
+        # Vertical travel → block left and right
         walls.append((wx,          wy, bw, T))
         walls.append((wx + T - bw, wy, bw, T))
 
     elif tile_type == NARROW_H:
-        # Schmale Fahrbahn horizontal – Wände dichter an Mitte
+        # Narrow roadway horizontal – walls closer to center
         nw = T // NARROW_W
         half = T // 2
         walls.append((wx, wy,               T, half - nw // 2))
         walls.append((wx, wy + half + nw // 2, T, half - nw // 2))
 
     elif tile_type == NARROW_V:
-        # Schmale Fahrbahn vertikal – Wände dichter an Mitte
+        # Narrow roadway vertical – walls closer to center
         nw = T // NARROW_W
         half = T // 2
         walls.append((wx,               wy, half - nw // 2, T))
         walls.append((wx + half + nw // 2, wy, half - nw // 2, T))
 
     elif tile_type in (CURVE_BL, CURVE_BR, CURVE_TL, CURVE_TR):
-        # Kurven: vier Randwände, kurz damit Anschlüsse frei bleiben
-        # Gemeinsam: Eckwände aller vier Seiten mit Lücken für Fahrbahnöffnungen
-        # Die genauen Lücken entsprechen dem Fahrbahnband [r1..r2] auf jeder Seite
-        if tile_type == CURVE_BL:   # Pivot unten-links, öffnet links+unten
-            # Oben: volle Breite
+        # Curves: four boundary walls, short to keep connections clear
+        # Common: corner walls on all four sides with gaps for roadway openings
+        # The exact gaps correspond to the roadway [r1..r2] on each side
+        if tile_type == CURVE_BL:   # Pivot bottom-left, opens left+bottom
+            # Top: full width
             walls.append((wx,       wy,          T,         bw))
-            # Rechts: volle Höhe
+            # Right: full height
             walls.append((wx + T - bw, wy,       bw,        T))
-            # Links: nur Ecken (Lücke für Ausfahrt nach links)
-            walls.append((wx,       wy,          bw,        r1))          # links oben
-            # Unten: nur Ecke rechts (Ausfahrt nach unten)
-            walls.append((wx + r2,  wy + T - bw, T - r2,   bw))          # unten rechts
+            # Left: only corners (gap for exit to left)
+            walls.append((wx,       wy,          bw,        r1))          # left top
+            # Bottom: only corner right (exit to bottom)
+            walls.append((wx + r2,  wy + T - bw, T - r2,   bw))          # bottom right
 
-        elif tile_type == CURVE_BR:  # Pivot unten-rechts, öffnet rechts+unten
+        elif tile_type == CURVE_BR:  # Pivot bottom-right, opens right+bottom
             walls.append((wx,       wy,          T,         bw))
             walls.append((wx,       wy,          bw,        T))
             walls.append((wx + T - bw, wy,       bw,        r1))
             walls.append((wx,       wy + T - bw, r1,        bw))
 
-        elif tile_type == CURVE_TL:  # Pivot oben-links, öffnet links+oben
+        elif tile_type == CURVE_TL:  # Pivot top-left, opens left+top
             walls.append((wx,       wy + T - bw, T,         bw))
             walls.append((wx + T - bw, wy,       bw,        T))
             walls.append((wx,       wy + r2,     bw,        T - r2))
             walls.append((wx + r2,  wy,          T - r2,    bw))
 
-        elif tile_type == CURVE_TR:  # Pivot oben-rechts, öffnet rechts+oben
+        elif tile_type == CURVE_TR:  # Pivot top-right, opens right+top
             walls.append((wx,       wy + T - bw, T,         bw))
             walls.append((wx,       wy,          bw,        T))
             walls.append((wx + T - bw, wy + r2,  bw,        T - r2))
             walls.append((wx,       wy,          r1,        bw))
 
-    # Filter: nur Wände mit positiver Größe
+    # Filter: only walls with positive size
     return [(x, y, max(1, w), max(1, h)) for x, y, w, h in walls if w > 0 and h > 0]
 
 
 class TrackTile:
     """
-    Einzelne Strecken-Kachel.
-    Phase 5.2: theme-aware Rendering, spawn_points() Hook für Phase 6.
+    Individual track tile.
+    Phase 5.2: theme-aware rendering, spawn_points() hook for Phase 6.
     """
 
     def __init__(self, world_x: float, world_y: float, tile_type: str,
@@ -228,11 +228,11 @@ class TrackTile:
         self.world_x   = world_x
         self.world_y   = world_y
         self.tile_type = tile_type
-        self.theme     = theme           # Theme-Objekt für Farben
+        self.theme     = theme           # Theme object for colors
         self._surf: Optional[pygame.Surface] = None
         self._scale_cache: dict = {}
 
-    # ── Physik ────────────────────────────────────────────────────────────────
+    # ── Physics ────────────────────────────────────────────────────────────────
 
     def surface_at(self, wx: float, wy: float) -> Optional[str]:
         lx = wx - self.world_x; ly = wy - self.world_y
@@ -265,18 +265,18 @@ class TrackTile:
                 self.world_y + py + math.sin(mid) * mid_r)
 
     def boundary_walls(self) -> list[tuple]:
-        """Tile-Boundary-Wände (für WallSystem). Gibt (x,y,w,h) Weltkoord. zurück."""
+        """Tile boundary walls (for WallSystem). Returns (x,y,w,h) world coords."""
         return _tile_boundary_walls(self.tile_type, self.world_x, self.world_y)
 
     def spawn_points(self) -> list[tuple[float, float]]:
         """
-        Phase 6 Hook: Gibt potenzielle Positionen für Items/Boost-Pads zurück.
-        Aktuell: Straßenmitte + links/rechts verschoben.
+        Phase 6 hook: Returns potential positions for items/boost pads.
+        Current: road center + left/right offset.
         """
         cx, cy = self.road_center()
         return [(cx, cy), (cx + 60, cy), (cx - 60, cy)]
 
-    # ── Serialisierung ────────────────────────────────────────────────────────
+    # ── Serialization ────────────────────────────────────────────────
 
     def to_dict(self) -> dict:
         return {"t": self.tile_type,
@@ -288,7 +288,7 @@ class TrackTile:
         return cls(float(d["gx"] * TILE_SIZE), float(d["gy"] * TILE_SIZE),
                    d["t"], theme=theme)
 
-    # ── Rendering ─────────────────────────────────────────────────────────────
+    # ── Rendering ─────────────────────────────────────────────
 
     def draw(self, screen: pygame.Surface,
              off_x: int, off_y: int, zoom: float = 1.0) -> None:
@@ -357,11 +357,11 @@ class TrackTile:
                 pygame.draw.rect(s, c["centerline"], (mid - 2, y, 4, 38))
 
     def _draw_narrow_h(self, s, T, c):
-        """Schmale horizontale Fahrbahn – T//NARROW_W breit."""
+        """Narrow horizontal roadway – T//NARROW_W wide."""
         nw  = T // NARROW_W
         ry  = T // 2 - nw // 2
         pygame.draw.rect(s, c["road"], (0, ry, T, nw))
-        # Randsteine auf beiden Seiten
+        # Curbs on both sides
         self._curb_h(s, 0, T, ry - CURB_W, CURB_W, c)
         self._curb_h(s, 0, T, ry + nw,     CURB_W, c)
         mid = T // 2
@@ -369,7 +369,7 @@ class TrackTile:
             pygame.draw.rect(s, c["centerline"], (x, mid - 1, 38, 2))
 
     def _draw_narrow_v(self, s, T, c):
-        """Schmale vertikale Fahrbahn – T//NARROW_W breit."""
+        """Narrow vertical roadway – T//NARROW_W wide."""
         nw  = T // NARROW_W
         rx  = T // 2 - nw // 2
         pygame.draw.rect(s, c["road"], (rx, 0, nw, T))
@@ -456,12 +456,12 @@ class TrackTile:
 
 class Track:
     """
-    Verwaltet alle Kacheln + Theme.
+    Manages all tiles + theme.
 
-    Phase 5.2 neu:
-      - self.theme: Theme-Objekt (Farben, Physik-Hooks)
-      - build_boundary_walls(): Tile-Rand-Wände (Auto fällt nicht aus der Welt)
-      - build_anticheat_walls(): Ziel-Bereich Wände
+    Phase 5.2 new:
+      - self.theme: Theme object (colors, physics hooks)
+      - build_boundary_walls(): Tile boundary walls (car doesn't fall out of world)
+      - build_anticheat_walls(): Finish area walls
     """
 
     T = TILE_SIZE
@@ -490,13 +490,13 @@ class Track:
     @classmethod
     def generate(cls, length: int = 20, seed=None, theme=None) -> Track:
         """
-        Generiert eine Zufallsstrecke.
-        theme=None → zufälliges Theme aus theme.THEMES gewählt.
+        Generates a random track.
+        theme=None → random theme selected from theme.THEMES.
         """
         from theme import Theme
         rng = random.Random(seed)
 
-        # Theme wählen
+        # Choose theme
         if theme is None:
             chosen_theme = Theme.random(seed=rng.randint(0, 9999))
         else:
@@ -533,8 +533,8 @@ class Track:
         tiles     = [TrackTile(0, 0, _STRAIGHT_FOR[heading], theme)]
         remaining = length - 2
 
-        # Kurven-Tendenz: S-Kurven und Chicanen stark gewichtet,
-        # high_speed nur einmal als gelegentliche Atempause
+        # Curve tendency: S-curves and chicanes heavily weighted,
+        # high_speed only once as occasional breather
         base_pool = [
             "s_curve", "s_curve", "s_curve",
             "chicane", "chicane",
@@ -543,7 +543,7 @@ class Track:
             "high_speed",
         ]
         preferred = getattr(theme, "preferred_sectors", [])
-        # preferred nur 1× extra (war 2×) um Kurven-Gewicht zu erhalten
+        # preferred only 1× extra (was 2×) to maintain curve weight
         sector_pool = preferred + base_pool
         rng.shuffle(sector_pool)
 
@@ -561,7 +561,7 @@ class Track:
 
                 if step == "S":
                     base_type = _STRAIGHT_FOR[heading]
-                    # Phase 7.2: ~12% Chance auf Narrow-Tile statt Normal-Gerade
+                    # Phase 7.2: ~12% chance of Narrow-Tile instead of normal straight
                     narrow_map = {STRAIGHT_H: NARROW_H, STRAIGHT_V: NARROW_V}
                     if rng.random() < 0.12 and base_type in narrow_map:
                         tile_type = narrow_map[base_type]
@@ -577,7 +577,7 @@ class Track:
                 heading    = new_heading
                 remaining -= 1
 
-        # Ziellinie
+        # Finish line
         finish_type = _FINISH_FOR[heading]
         finish_idx  = len(tiles)
         dx, dy = _DELTA[heading]
@@ -591,26 +591,26 @@ class Track:
                                   (STRAIGHT_H, STRAIGHT_V) else old.tile_type, theme)
             finish_idx = len(tiles) - 1
 
-        # Kanister + Phase 6.2: Boost-Pads & Ölflecken
+        # Canisters + Phase 6.2: Boost pads & oil spills
         can_pos   = []
         boost_pos = []   # (x, y, angle)
         oil_pos   = []   # (x, y)
-        box_pos   = []   # (x, y) ItemBoxen – Phase 7
+        box_pos   = []   # (x, y) item boxes – Phase 7
 
         for i, tile in enumerate(tiles[2:finish_idx], start=2):
             cx, cy = tile.road_center()
             can_pos.append((cx + rng.uniform(-25, 25), cy + rng.uniform(-25, 25)))
             if rng.random() < 0.67:
                 can_pos.append((cx + rng.uniform(-60, 60), cy + rng.uniform(-60, 60)))
-            # Boost nur auf Geraden (~30 %)
+            # Boost only on straights (~30 %)
             if tile.tile_type in (STRAIGHT_H, STRAIGHT_V) and rng.random() < 0.30:
                 angle = 0.0 if tile.tile_type == STRAIGHT_H else 90.0
                 boost_pos.append((cx + rng.uniform(-40, 40),
                                    cy + rng.uniform(-30, 30), angle))
-            # Öl auf Geraden + Kurven (~20 %)
+            # Oil on straights + curves (~20 %)
             if rng.random() < 0.20:
                 oil_pos.append((cx + rng.uniform(-55, 55), cy + rng.uniform(-55, 55)))
-            # ItemBox: selten (~15 %), bevorzugt auf Kurven-Tiles
+            # ItemBox: rare (~15 %), preferred on curve tiles
             is_curve = tile.tile_type in (CURVE_BL, CURVE_BR, CURVE_TL, CURVE_TR)
             prob = 0.22 if is_curve else 0.12
             if rng.random() < prob:
@@ -618,14 +618,14 @@ class Track:
 
         return tiles, can_pos, boost_pos, oil_pos, box_pos, finish_idx
 
-    # ── Wände ─────────────────────────────────────────────────────────────────
+    # ── Walls ─────────────────────────────────────────────────────────
 
-    def build_boundary_walls(self) -> list[tuple]:
+    def build_boundary_walls(self) -> list[tuple[float, float, float, float]]:
         """
-        Phase 10 Bugfix: Erzeugt Wände NUR an den absoluten Außenkanten
-        der gesamten Karte (Weltgrenze).
-        Das gesamte Innen-Gras ist frei befahrbar – keine Tile-internen Wände mehr.
-        Gibt Liste von (x, y, w, h) in Weltkoordinaten zurück.
+        Builds invisible boundary walls around the outside
+        of the entire map (world boundary).
+        All inner grass is freely driveable – no more tile-internal walls.
+        Returns list of (x, y, w, h) in world coordinates.
         """
         if not self.tiles:
             return []
@@ -648,10 +648,10 @@ class Track:
         ]
 
     def build_anticheat_walls(self) -> list[tuple]:
-        """Phase 10: Keine internen Anti-Cheat-Wände – Gras ist frei."""
+        """Phase 10: No internal Anti-Cheat walls – Grass is free."""
         return []
 
-    # ── Ziellinie ─────────────────────────────────────────────────────────────
+    # ── Finish line ─────────────────────────────────────────────────────
 
     def finish_center(self) -> tuple[float, float]:
         return self.tiles[self._finish_tile_idx].road_center()
@@ -661,7 +661,7 @@ class Track:
         cx, cy = tile.road_center()
         return math.hypot(wx - cx, wy - cy) < radius + TILE_SIZE // 3
 
-    # ── Serialisierung ────────────────────────────────────────────────────────
+    # ── Serialization ────────────────────────────────────────────────
 
     def to_dict(self) -> dict:
         return {
@@ -698,7 +698,7 @@ class Track:
         obj._finish_tile_idx    = int(data.get("finish_idx", len(obj.tiles)-1))
         return obj
 
-    # ── Physik / Kanister ─────────────────────────────────────────────────────
+    # ── Physics / Canisters ─────────────────────────────────────────────────────
 
     def surface_at(self, wx: float, wy: float) -> str:
         for tile in self.tiles:
@@ -715,10 +715,10 @@ class Track:
         return list(getattr(self, "_oil_positions", []))
 
     def box_positions(self) -> list[tuple[float, float]]:
-        """ItemBox-Positionen (x, y) – Phase 7."""
+        """ItemBox positions (x, y) – Phase 7."""
         return list(getattr(self, "_box_positions", []))
 
-    # ── Rendering ─────────────────────────────────────────────────────────────
+    # ── Rendering ─────────────────────────────────────────────
 
     def draw(self, screen: pygame.Surface,
              off_x: int, off_y: int, zoom: float = 1.0) -> None:

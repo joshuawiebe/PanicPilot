@@ -1,21 +1,20 @@
 # =============================================================================
-#  engine_sound.py  –  Adaptive Engine Sound Synthesis (basierend auf
-#                          engine-sound-simulator von jgardner8)
+#  engine_sound.py  –  Adaptive Engine Sound Synthesis (based on
+#                          engine-sound-simulator by jgardner8)
 # =============================================================================
 #
-#  Generiert realistische Motor-Sounds basierend auf:
-#    - RPM (U/min des Motors)
-#    - Zylinderkonfiguration (Inline-4, V-Twin, etc.)
-#    - Zündzeitpunkte (Firing Order)
+#  Generates realistic engine sounds based on:
+#    - RPM (engine revolutions per minute)
+#    - Cylinder configuration (Inline-4, V-Twin, etc.)
+#    - Ignition timing (Firing Order)
 #
-#  Die Sounds werden in Echtzeit am Puffer generiert und über pygame.mixer
-#  wiedergegeben.
+#  Sounds are generated in real-time on the buffer and played via pygame.mixer.
 #
-#  Verwendung:
+#  Usage:
 #    from engine_sound import EngineSound
 #    engine = EngineSound(idle_rpm=1200, max_rpm=7500, cylinders=4)
-#    engine.set_throttle(0.5)  # 0.0 = Leerlauf, 1.0 = Vollgas
-#    engine.update(dt)  # Jedes Frame aufrufen
+#    engine.set_throttle(0.5)  # 0.0 = idle, 1.0 = full throttle
+#    engine.update(dt)  # call every frame
 #
 # =============================================================================
 from __future__ import annotations
@@ -42,7 +41,7 @@ _MAX_16BIT = 32767.0
 
 
 def _sine_wave(freq: float, duration: float, amp: float = 0.8):
-    """Erzeugt eine Sinuswelle bei gegebener Frequenz."""
+    """Creates a sine wave at given frequency."""
     if duration <= 0:
         return []
     n = int(_SAMPLE_RATE * duration)
@@ -51,7 +50,7 @@ def _sine_wave(freq: float, duration: float, amp: float = 0.8):
 
 
 def _exponential_decay(values: list[float], base: float = 3.0) -> list[float]:
-    """Wendet exponentielles Auslaufen auf einen Puffer an."""
+    """Applies exponential decay to a buffer."""
     if not values:
         return []
     n = len(values)
@@ -60,12 +59,12 @@ def _exponential_decay(values: list[float], base: float = 3.0) -> list[float]:
 
 
 def _pad_silence(audio: list[float], num_samples: int) -> list[float]:
-    """Fügt Stille am Ende hinzu."""
+    """Adds silence at the end."""
     return audio + [0.0] * max(0, num_samples - len(audio))
 
 
 def _slice_audio(audio: list[float], duration: float) -> list[float]:
-    """Schneidet Audio auf Länge."""
+    """Truncates audio to length."""
     if duration <= 0:
         return []
     num_samples = int(_SAMPLE_RATE * duration)
@@ -73,7 +72,7 @@ def _slice_audio(audio: list[float], duration: float) -> list[float]:
 
 
 def _normalize_audio(audio: list[float]) -> list[float]:
-    """Normalisiert auf MAX_16BIT."""
+    """Normalizes to MAX_16BIT."""
     if not audio:
         return []
     max_val = max(abs(v) for v in audio) if audio else 0.0
@@ -84,7 +83,7 @@ def _normalize_audio(audio: list[float]) -> list[float]:
 
 
 def _overlay_audio(*buffers) -> list[float]:
-    """Überlagert mehrere Audio-Puffer (Sum-Mix)."""
+    """Overlays multiple audio buffers (sum mix)."""
     if not buffers or all(not b for b in buffers):
         return []
     max_len = max(len(b) for b in buffers if b)
@@ -96,7 +95,7 @@ def _overlay_audio(*buffers) -> list[float]:
 
 
 def _concat_audio(*buffers) -> list[float]:
-    """Verkettet Audio-Puffer."""
+    """Concatenates audio buffers."""
     result = []
     for buf in buffers:
         result.extend(buf)
@@ -104,7 +103,7 @@ def _concat_audio(*buffers) -> list[float]:
 
 
 def _resample_audio(audio: list[float], factor: float) -> list[float]:
-    """Resampled Audio mit linearer Interpolation."""
+    """Resamples audio with linear interpolation."""
     if factor <= 0 or not audio:
         return []
     if abs(factor - 1.0) < 0.001:
@@ -130,23 +129,23 @@ def _resample_audio(audio: list[float], factor: float) -> list[float]:
 
 class EngineSound:
     """
-    Synthetisiert realistische Motor-Sounds basierend auf RPM und Drosselklappe.
+    Synthesizes realistic engine sounds based on RPM and throttle.
     """
 
     def __init__(self, idle_rpm: float = 1200, max_rpm: float = 7500,
                  cylinders: int = 4, timing_offsets: Sequence[float] | None = None) -> None:
         """
-        :param idle_rpm: Leerlauf-Drehzahl
-        :param max_rpm: Maximale Drehzahl (Limiter)
-        :param cylinders: Anzahl Zylinder (2, 4, 6, 8)
-        :param timing_offsets: Zündzeitpunkte in Grad (z.B. [0, 180, 180, 180] für Inline-4)
+        :param idle_rpm: idle RPM
+        :param max_rpm: maximum RPM (limiter)
+        :param cylinders: number of cylinders (2, 4, 6, 8)
+        :param timing_offsets: ignition timing in degrees (e.g. [0, 180, 180, 180] for Inline-4)
         """
         self.idle_rpm = idle_rpm
         self.max_rpm = max_rpm
         self.cylinders = cylinders
         self.current_rpm = idle_rpm
         
-        # Standardwerte für verschiedene Konfigurationen
+        # Default values for different configurations
         if timing_offsets is None:
             if cylinders == 2:
                 timing_offsets = [0, 360]  # Twin: 360°
@@ -161,7 +160,7 @@ class EngineSound:
         self._audio_buffer = []
         self._throttle = 0.0
         
-        # Vorgenerierte Zündsounds
+        # Pre-generated ignition sounds
         self._fire_sound = self._create_fire_sound()
         self._between_sound = [0.0] * int(0.05 * _SAMPLE_RATE)  # 50ms Stille
 
@@ -219,16 +218,16 @@ class EngineSound:
 
     def set_throttle(self, throttle: float) -> None:
         """
-        Setzt die Drosselklappe (0.0 = Leerlauf, 1.0 = Vollgas).
+        Sets the throttle (0.0 = idle, 1.0 = full throttle).
         """
         self._throttle = max(0.0, min(1.0, throttle))
 
     def update(self, dt: float) -> None:
         """
-        Aktualisiert RPM und Puffer basierend auf Drosselklappe.
-        Sollte jeden Frame aufgerufen werden.
+        Updates RPM and buffer based on throttle.
+        Should be called every frame.
         """
-        # RPM-Interpolation (Trägheit)
+        # RPM interpolation (inertia)
         target_rpm = self.idle_rpm + self._throttle * (self.max_rpm - self.idle_rpm)
         rpm_accel = 5000.0  # U/min pro Sekunde
         
@@ -239,8 +238,8 @@ class EngineSound:
 
     def gen_audio(self, num_samples: int) -> bytes:
         """
-        Generiert Audio-Daten für pygame.mixer.
-        Gibt Audio als 16-Bit Integer bytes zurück.
+        Generates audio data for pygame.mixer.
+        Returns audio as 16-bit integer bytes.
         """
         # RPM guard
         rpm = max(self.idle_rpm, self.current_rpm)
@@ -252,7 +251,7 @@ class EngineSound:
             cycle = self._gen_one_cycle_audio(cycle_duration)
             self._audio_buffer.extend(cycle)
         
-        # Extrahiere gewünschte Menge
+        # Extract desired amount
         if isinstance(self._audio_buffer, list):
             audio_out = self._audio_buffer[:num_samples]
             self._audio_buffer = self._audio_buffer[num_samples:]
@@ -262,18 +261,18 @@ class EngineSound:
             self._audio_buffer = self._audio_buffer[num_samples:]
             audio_i16 = audio_out.astype(np.int16).tolist()
         
-        # Pad mit Stille, wenn nicht genug vorhanden
+        # Pad with silence if not enough available
         while len(audio_i16) < num_samples:
             audio_i16.append(0)
         
-        # Konvertiere zu bytes
+        # Convert to bytes
         return struct.pack(f'<{num_samples}h', *audio_i16[:num_samples])
 
 
 # ────────────────────────────────────────────────────────────────────────────
 
 def create_inline_four() -> EngineSound:
-    """Erstellt einen Inline-4-Motor (z.B. für standard Auto)."""
+    """Creates an inline-4 engine (e.g. for standard car)."""
     return EngineSound(
         idle_rpm=1200,
         max_rpm=7500,
@@ -283,7 +282,7 @@ def create_inline_four() -> EngineSound:
 
 
 def create_v_twin() -> EngineSound:
-    """Erstellt einen V-Twin-Motor (z.B. für Motorrad)."""
+    """Creates a V-twin engine (e.g. for motorcycle)."""
     return EngineSound(
         idle_rpm=900,
         max_rpm=9000,
@@ -293,7 +292,7 @@ def create_v_twin() -> EngineSound:
 
 
 def create_v_eight() -> EngineSound:
-    """Erstellt einen V8-Motor (z.B. für Sports Car)."""
+    """Creates a V8 engine (e.g. for sports car)."""
     return EngineSound(
         idle_rpm=1500,
         max_rpm=8000,

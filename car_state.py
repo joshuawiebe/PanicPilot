@@ -1,14 +1,14 @@
 # =============================================================================
-#  car_state.py  –  Panic Pilot | Zentraler Auto-Zustand (Phase-2-Ready)
+#  car_state.py  –  Panic Pilot | Central Car State (Phase-2-Ready)
 # =============================================================================
 #
-#  CarState ist der einzige „Wahrheitsträger" für alle dynamischen Fahrzeugdaten.
-#  Alle Felder sind JSON-serialisierbar → bereit für Netzwerk-Übertragung.
+#  CarState is the single "source of truth" for all dynamic vehicle data.
+#  All fields are JSON-serializable → ready for network transmission.
 #
-#  Verwendung:
+#  Usage:
 #      state = CarState(x=640, y=500, angle=270.0, speed=0.0, fuel=100.0)
-#      payload = state.to_json()          # → verschicken per Socket
-#      state   = CarState.from_json(payload)  # ← empfangen & rekonstruieren
+#      payload = state.to_json()          # → send via socket
+#      state   = CarState.from_json(payload)  # ← receive & reconstruct
 # =============================================================================
 from __future__ import annotations
 import json
@@ -18,27 +18,27 @@ from dataclasses import dataclass, asdict
 @dataclass
 class CarState:
     """
-    Alle veränderlichen Fahrzeugdaten in einer kompakten, serialisierbaren Struktur.
+    All mutable vehicle data in a compact, serializable structure.
 
-    Koordinatensystem:
-      - angle 0   = Norden (Bildschirm oben), clockwise positiv
-      - speed > 0 = vorwärts, speed < 0 = rückwärts  [px/s]
+    Coordinate system:
+      - angle 0   = North (screen top), clockwise positive
+      - speed >0 = forward, speed <0 = backward  [px/s]
       - fuel      = 0 … FUEL_MAX
     """
     x:      float
     y:      float
-    angle:  float   # degrees, 0 = Nord, clockwise
+    angle:  float   # degrees, 0 = North, clockwise
     speed:  float   # px/s
     fuel:   float   # 0 … FUEL_MAX
 
-    # ─── Serialisierung ──────────────────────────────────────────────────────
+    # ─── Serialization ──────────────────────────────────────────────────────
 
     def to_dict(self) -> dict:
-        """Alle Felder als einfaches Dict (float-only, JSON-safe)."""
+        """All fields as simple dict (float-only, JSON-safe)."""
         return asdict(self)
 
     def to_json(self) -> str:
-        """Kompakter JSON-String für Netzwerk-Übertragung."""
+        """Compact JSON string for network transmission."""
         return json.dumps(self.to_dict(), separators=(",", ":"))
 
     @classmethod
@@ -55,14 +55,14 @@ class CarState:
     def from_json(cls, s: str) -> CarState:
         return cls.from_dict(json.loads(s))
 
-    # ─── Hilfsmethoden ───────────────────────────────────────────────────────
+    # ─── Helper methods ────────────────────────────────────────────────────────
 
     def copy(self) -> CarState:
-        """Flache Kopie für Snapshot / Rollback."""
+        """Shallow copy for snapshot / rollback."""
         return CarState(self.x, self.y, self.angle, self.speed, self.fuel)
 
     def apply_dict(self, d: dict) -> None:
-        """Überschreibt Felder aus einem Dict (in-place, für Netzwerk-Update)."""
+        """Overwrites fields from a dict (in-place, for network update)."""
         if "x"     in d: self.x     = float(d["x"])
         if "y"     in d: self.y     = float(d["y"])
         if "angle" in d: self.angle = float(d["angle"])

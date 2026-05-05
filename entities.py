@@ -1,19 +1,19 @@
 # =============================================================================
-#  entities.py  –  Panic Pilot | Pickups & Effekte (Phase 6.2b)
+#  entities.py  –  Panic Pilot | Pickups & Effects (Phase 6.2b)
 # =============================================================================
 #
-#  Individuelle Kollektion (PvP):
-#    Jedes Objekt trägt collected_by: set[int].
-#    try_pickup / try_trigger → True wenn Spieler noch NICHT gesammelt hat.
-#    Visuell: ausgegraut für diesen Spieler, voll sichtbar für den anderen.
-#    Global inaktiv erst wenn BEIDE gesammelt haben (PvP) oder einer (Solo).
+#  Individual collection (PvP):
+#    Each object has collected_by: set[int].
+#    try_pickup / try_trigger → True if player has NOT yet collected.
+#    Visually: grayed out for this player, fully visible for the other.
+#    Globally inactive only when BOTH have collected (PvP) or one (solo).
 #
 #  draw(player_id=…):
-#    PLAYER_HOST (0) / PLAYER_CLIENT (1) steuert den visuellen Status.
+#    PLAYER_HOST (0) / PLAYER_CLIENT (1) controls the visual status.
 #
 #  EntityParticleSystem:
-#    emit_boost_sparks(x, y)           – gelbe Funken beim Boost-Pickup
-#    emit_dust(x, y, angle, speed, surface_type)  – Staub/Eis hinter Rädern
+#    emit_boost_sparks(x, y)           – yellow sparks on boost pickup
+#    emit_dust(x, y, angle, speed, surface_type)  – dust/ice behind wheels
 # =============================================================================
 from __future__ import annotations
 import math
@@ -76,7 +76,7 @@ class FuelCanister:
             self._respawn_timer = self.RESPAWN_TIME
         return True
 
-    # ── Netzwerk ─────────────────────────────────────────────────────────────
+    # ── Network ─────────────────────────────────────────────────────────────────
 
     def to_net_dict(self) -> dict:
         return {
@@ -147,12 +147,12 @@ class FuelCanister:
 # =============================================================================
 class BoostPad:
     """
-    Gelber Streifen – gibt BOOST_DURATION Sekunden Schub.
-    Individuell: jeder Spieler löst es separat aus (eigenes collected_by).
+    Yellow stripe – gives BOOST_DURATION seconds of boost.
+    Individual: each player triggers it separately (own collected_by).
     """
     RADIUS          = 30
-    BOOST_SPEED     = 300.0    # Sofort-Impuls (px/s addiert)
-    BOOST_ACCEL     = 900.0    # Zusatz-Beschleunigung während boost_timer
+    BOOST_SPEED     = 300.0    # Immediate impulse (px/s added)
+    BOOST_ACCEL     = 900.0    # Additional acceleration during boost_timer
     BOOST_DURATION  = 1.5
     BOOST_MAX_SPEED = 780.0
     RESPAWN_TIME    = 10.0
@@ -200,7 +200,7 @@ class BoostPad:
             self._respawn_timer = self.RESPAWN_TIME
         return True
 
-    # ── Netzwerk ─────────────────────────────────────────────────────────────
+    # ── Network ─────────────────────────────────────────────────────────────────
 
     def to_net_dict(self) -> dict:
         return {
@@ -279,8 +279,8 @@ class BoostPad:
 # =============================================================================
 class OilSlick:
     """
-    Ölfleck – reduziert grip_factor für SPIN_DURATION Sekunden.
-    Individuell: jeder Spieler löst den Effekt separat aus.
+    Oil slick – reduces grip_factor for SPIN_DURATION seconds.
+    Individual: each player triggers the effect separately.
     """
     RADIUS        = 28
     SPIN_GRIP     = 0.08
@@ -328,7 +328,7 @@ class OilSlick:
             self._respawn_timer = self.RESPAWN_TIME
         return True
 
-    # ── Netzwerk ─────────────────────────────────────────────────────────────
+    # ── Network ─────────────────────────────────────────────────────────────────
 
     def to_net_dict(self) -> dict:
         return {
@@ -424,15 +424,15 @@ class _EParticle:
 
 class EntityParticleSystem:
     """
-    Partikel-Effekte für Boost-Sparks und Oberflächen-Staub.
+    Particle effects for boost sparks and surface dust.
 
     Integration in game.py / client.py:
         self.entity_particles = EntityParticleSystem()
-        # im update():
-        self.entity_particles.emit_boost_sparks(b.x, b.y)   # nach Boost-Pickup
+        # in update():
+        self.entity_particles.emit_boost_sparks(b.x, b.y)   # after boost pickup
         self.entity_particles.emit_dust(s.x, s.y, s.angle, s.speed, surf)
         self.entity_particles.update(dt)
-        # im draw_world():
+        # in draw_world():
         self.entity_particles.draw(surface, off_x, off_y, zoom)
     """
     MAX = 250
@@ -443,7 +443,7 @@ class EntityParticleSystem:
     # ── Emitter ──────────────────────────────────────────────────────────────
 
     def emit_boost_sparks(self, x: float, y: float) -> None:
-        """Gelb-weißer Funken-Burst beim Boost-Pickup."""
+        """Yellow-white spark burst on boost pickup."""
         cols = [(255, 230, 50), (255, 200, 0), (255, 255, 180), (255, 160, 0)]
         for _ in range(24):
             a  = random.uniform(0, math.pi * 2)
@@ -462,11 +462,11 @@ class EntityParticleSystem:
                   angle: float, speed: float,
                   surface_type: str = "grass") -> None:
         """
-        Kleine Partikel hinter den Hinterrädern.
-        Wird pro Frame aufgerufen – hat internen Raten-Begrenzer.
-        surface_type: "ice" → Eis-Kristalle (hellblau)
-                      "desert" → Sand (braun-gelb)
-                      "grass"  → Erde (braun-grün)
+        Small particles behind the rear wheels.
+        Called per frame – has internal rate limiter.
+        surface_type: "ice" → ice crystals (light blue)
+                      "desert" → sand (brown-yellow)
+                      "grass"  → dirt (brown-green)
         """
         if abs(speed) < 25 or len(self._p) >= self.MAX:
             return
@@ -507,12 +507,12 @@ class EntityParticleSystem:
 # =============================================================================
 #  ItemBox  –  Phase 7
 # =============================================================================
-#  Pulsierendes lila/blaues "?"-Quadrat. Beim Einsammeln gibt es zufällig
-#  ein Item aus ITEMS_POOL. Individuelle collected_by-Logik wie BoostPad.
+#  Pulsating purple/blue "?" square. When collected, gives a random
+#  item from ITEMS_POOL. Individual collected_by logic like BoostPad.
 # =============================================================================
 
 ITEMS_POOL = [
-    "pocket_boost", "pocket_boost",   # 2× häufiger
+    "pocket_boost", "pocket_boost",   # 2× more frequent
     "oil_drop",
     "green_boomerang",
     "red_boomerang",
@@ -550,8 +550,8 @@ class ItemBox:
     def try_pickup(self, car_x: float, car_y: float,
                    player_id: int = PLAYER_HOST) -> str | None:
         """
-        Gibt das gewürfelte Item zurück (z.B. 'pocket_boost') oder None.
-        Verhindert Doppel-Pickup über collected_by.
+        Returns the rolled item (e.g. 'pocket_boost') or None.
+        Prevents double pickup via collected_by.
         """
         if player_id in self.collected_by or not self.active:
             return None
@@ -565,11 +565,11 @@ class ItemBox:
         else:
             self.active = False
             self._respawn_timer = self.RESPAWN_TIME
-        # Würfeln – deterministisch genug für Host-Authority-Modell
+        # Roll – deterministic enough for host-authority model
         import random
         return random.choice(ITEMS_POOL)
 
-    # ── Netzwerk ─────────────────────────────────────────────────────────────
+    # ── Network ─────────────────────────────────────────────────────────────────
 
     def to_net_dict(self) -> dict:
         return {
@@ -600,11 +600,11 @@ class ItemBox:
             self._draw_faded(surface, sx, sy, r, zoom)
             return
 
-        # Rotation über Zeit
-        angle  = self._time * 45.0   # 45°/s langsame Rotation
+        # Rotation over time
+        angle  = self._time * 45.0   # 45°/s slow rotation
         pulse  = 0.75 + 0.25 * math.sin(self._time * 3.5)
 
-        # Äußerer Glow (lila)
+        # Outer glow (purple)
         glow_r = int(r * 1.7 * pulse)
         glow   = pygame.Surface((glow_r*2+4, glow_r*2+4), pygame.SRCALPHA)
         pygame.draw.ellipse(glow, (160, 80, 255, 45), (0, 0, glow_r*2+4, glow_r*2+4))
@@ -613,7 +613,7 @@ class ItemBox:
         # Quadrat (rotiert)
         box_s  = max(8, int(r * 1.6))
         box_sf = pygame.Surface((box_s, box_s), pygame.SRCALPHA)
-        # Farbverlauf-Effekt: zwei Rechtecke
+        # Gradient effect: two rectangles
         pygame.draw.rect(box_sf, (120, 40, 220),
                          (0, 0, box_s, box_s), border_radius=max(2, box_s//6))
         pygame.draw.rect(box_sf, (200, 130, 255),
@@ -662,23 +662,23 @@ class ItemBox:
 #  Boomerangs  –  Phase 8
 # =============================================================================
 #
-#  GreenBoomerang: fliegt geradeaus in Abschuss-Richtung, prallt an Tile-
-#    Außenwänden ab (max MAX_BOUNCES Abpraller), trifft fremde Autos → spin.
-#  RedBoomerang: "smart" – bewegt sich mit leichtem Home-to-target Lenkwinkel
-#    zum nächsten Gegner.
+#  GreenBoomerang: flies straight in launch direction, bounces off tile
+#    outer walls (max MAX_BOUNCES bounces), hits enemy cars → spin.
+#  RedBoomerang: "smart" – moves with slight homing angle
+#    toward the nearest opponent.
 #
-#  Beide:  owner_id verhindert Selbstschaden.
-#          to_net_dict / apply_net_dict für Netzwerk-Sync.
+#  Both: owner_id prevents self-damage.
+#        to_net_dict / apply_net_dict for network sync.
 # =============================================================================
 
 BOOMERANG_SPEED     = 620.0   # px/s
-BOOMERANG_LIFETIME  = 4.5     # Sekunden bis Selbstzerstörung
+BOOMERANG_LIFETIME  = 4.5     # Seconds until self-destruction
 BOOMERANG_RADIUS    = 10
-MAX_BOUNCES         = 4       # GreenBoomerang max Abpraller
+MAX_BOUNCES         = 4       # GreenBoomerang max bounces
 
 
 class GreenBoomerang:
-    """Fliegt geradeaus, prallt ab, löst spin_timer beim Treffer aus."""
+    """Flies straight, bounces off walls, triggers spin_timer on hit."""
 
     def __init__(self, x: float, y: float, angle: float,
                  owner_id: int, brang_id: int = 0) -> None:
@@ -708,16 +708,16 @@ class GreenBoomerang:
         nx = self.x + self.vx * dt
         ny = self.y + self.vy * dt
 
-        # Wand-Abpraller: prüfe ob neues Tile verfügbar
-        # Vereinfacht: wenn kein Tile gefunden (außerhalb aller Tiles) → Bounce
+        # Wall bounce: check if new tile is available
+        # Simplified: if no tile found (outside all tiles) → bounce
         on_track = any(t.surface_at(nx, ny) is not None for t in track.tiles)
         if not on_track:
             if self._bounces >= MAX_BOUNCES:
                 self.active = False
                 return
             self._bounces += 1
-            # Rückstoß: Richtung umkehren
-            # Berechne welche Achse blockiert ist
+            # Recoil: reverse direction
+            # Calculate which axis is blocked
             on_x = any(t.surface_at(nx, self.y) is not None for t in track.tiles)
             on_y = any(t.surface_at(self.x, ny) is not None for t in track.tiles)
             if not on_x:
@@ -735,7 +735,7 @@ class GreenBoomerang:
 
     def check_hit(self, car_x: float, car_y: float,
                   car_player_id: int) -> bool:
-        """Gibt True zurück wenn das Projektil ein fremdes Auto trifft."""
+        """Returns True if the projectile hits an enemy car."""
         if not self.active or car_player_id == self.owner_id:
             return False
         if math.hypot(car_x - self.x, car_y - self.y) < BOOMERANG_RADIUS + 18:
@@ -743,7 +743,7 @@ class GreenBoomerang:
             return True
         return False
 
-    # ── Netzwerk ─────────────────────────────────────────────────────────────
+    # ── Network ─────────────────────────────────────────────────────────────────
 
     def to_net_dict(self) -> dict:
         return {
@@ -773,7 +773,7 @@ class GreenBoomerang:
         sy = int(self.y * zoom) + off_y
         r  = max(4, int(BOOMERANG_RADIUS * zoom))
 
-        # Rotierendes Dreieck (grün)
+        # Rotating triangle (green)
         pts = []
         for i in range(3):
             a = math.radians(self._rot + i * 120)
@@ -789,10 +789,10 @@ class GreenBoomerang:
 
 class RedBoomerang:
     """
-    Smart-Projektil: lenkt leicht zum nächsten Gegner-Auto.
-    Nutzt eine vereinfachte Lenkkorrektur pro Frame.
+    Smart projectile: steers slightly toward the nearest enemy car.
+    Uses simplified steering correction per frame.
     """
-    STEER_STRENGTH = 140.0   # Grad/s maximale Kurskorrektur
+    STEER_STRENGTH = 140.0   # Degrees/s maximum course correction
 
     def __init__(self, x: float, y: float, angle: float,
                  owner_id: int, brang_id: int = 0) -> None:
@@ -851,7 +851,7 @@ class RedBoomerang:
             return True
         return False
 
-    # ── Netzwerk ─────────────────────────────────────────────────────────────
+    # ── Network ─────────────────────────────────────────────────────────────────
 
     def to_net_dict(self) -> dict:
         return {
