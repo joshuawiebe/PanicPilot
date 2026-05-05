@@ -784,17 +784,17 @@ class Game:
 
         for wx, wy, timer in self.pings:
             sx, sy = self.camera.w2s(wx, wy)
-            frac = max(0.0, timer / PING_DURATION)  # 1.0 → 0.0 as ping ages
+            frac = max(0.0, timer / PING_DURATION)
 
-            # Color shift: cyan → orange → red based on age
+            # Bright color shift: pure yellow/white → orange → red
             if frac > 0.5:
-                t = (frac - 0.5) * 2.0  # 1.0 at fresh, 0.0 at half-life
-                r = int(0 * t + 255 * (1 - t))
-                g = int(220 * t + 165 * (1 - t))
-                b = int(255 * t + 0 * (1 - t))
+                t = (frac - 0.5) * 2.0
+                r = 255
+                g = int(255 * t + 165 * (1 - t))
+                b = int(180 * t)
             else:
-                t = frac * 2.0  # 1.0 at half-life, 0.0 at expiry
-                r = int(255 * 1.0)
+                t = frac * 2.0
+                r = 255
                 g = int(165 * t + 60 * (1 - t))
                 b = 0
             base_color = (r, g, b)
@@ -802,37 +802,37 @@ class Game:
             # Distance cue: scale max ripple radius by world-distance (clamped)
             world_dist = math.hypot(wx - car_x, wy - car_y)
             dist_scale = min(1.0, world_dist / 600.0)
-            max_ripple_r = int(18 + 22 * dist_scale)
+            max_ripple_r = int(22 + 28 * dist_scale)
 
             # Pulsing effect
             pulse = 0.9 + 0.1 * math.sin(now_ms / 150.0)
 
             # Ripple rings: 3 rings with phase offset
-            alpha_base = int(max(40, 200 * frac))
+            alpha_base = int(max(80, 240 * frac))
             for ring in range(3):
-                phase_offset = ring * 400  # ms offset per ring
-                ring_t = ((now_ms + phase_offset) % 1200) / 1200.0  # 0→1 over 1.2s
-                ring_r = int(8 + (max_ripple_r - 8) * ring_t)
-                ring_alpha = int(alpha_base * (1.0 - ring_t) * 0.8 * pulse)
+                phase_offset = ring * 400
+                ring_t = ((now_ms + phase_offset) % 1200) / 1200.0
+                ring_r = int(10 + (max_ripple_r - 10) * ring_t)
+                ring_alpha = int(alpha_base * (1.0 - ring_t) * 0.9 * pulse)
                 if ring_r < 2 or ring_alpha < 5:
                     continue
-                size = ring_r * 2 + 4
-                mid = ring_r + 2
+                size = ring_r * 2 + 6
+                mid = ring_r + 3
                 tmp = pygame.Surface((size, size), pygame.SRCALPHA)
-                pygame.draw.circle(tmp, (*base_color, ring_alpha), (mid, mid), ring_r, 2)
+                pygame.draw.circle(tmp, (*base_color, ring_alpha), (mid, mid), ring_r, 3)
                 surface.blit(tmp, (int(sx) - mid, int(sy) - mid))
 
-            # Static center dot + cross-arms (always visible)
-            core_alpha = int(max(80, 220 * frac * pulse))
-            core_size = 32
-            core_mid = 16
+            # Static center dot + cross-arms (bright and highly visible)
+            core_alpha = int(max(120, 255 * frac * pulse))
+            core_size = 40
+            core_mid = 20
             core = pygame.Surface((core_size, core_size), pygame.SRCALPHA)
-            pygame.draw.circle(core, (*base_color, core_alpha), (core_mid, core_mid), 5, 2)
-            for dx, dy in [(10, 0), (-10, 0), (0, 10), (0, -10)]:
+            pygame.draw.circle(core, (*base_color, core_alpha), (core_mid, core_mid), 7, 3)
+            for dx, dy in [(14, 0), (-14, 0), (0, 14), (0, -14)]:
                 pygame.draw.line(core, (*base_color, core_alpha),
                                  (core_mid, core_mid),
-                                 (core_mid + dx, core_mid + dy), 2)
-            pygame.draw.circle(core, (255, 255, 160, core_alpha), (core_mid, core_mid), 3)
+                                 (core_mid + dx, core_mid + dy), 3)
+            pygame.draw.circle(core, (255, 255, 240, core_alpha), (core_mid, core_mid), 5)
             surface.blit(core, (int(sx) - core_mid, int(sy) - core_mid))
 
         # Draw off-screen arrows for pings not visible in current viewport
