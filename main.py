@@ -499,7 +499,6 @@ class MainMenu:
         clock = pygame.time.Clock()
         while True:
             dt = clock.tick(60) / 1000.0;  self._t += dt
-            self.screen = pygame.display.get_surface() or self.screen
             mouse = pygame.mouse.get_pos()
             for event in pygame.event.get():
                 if _handle_global_key(event):                         continue
@@ -611,7 +610,8 @@ class HostSetupMenu:
 
     def run(self, prefill: dict | None = None) -> tuple | None:
         if prefill:
-            self._mode_idx  = self._modes.index(prefill.get("mode", 1))
+            mode_val = prefill.get("mode", 1)
+            self._mode_idx = self._modes.index(mode_val) if mode_val in self._modes else 0
             self._speed_idx = prefill.get("speed_idx", 1)
             self._slider.value = prefill.get("length", 20)
             if "room_name" in prefill:
@@ -619,7 +619,6 @@ class HostSetupMenu:
         clock = pygame.time.Clock()
         while True:
             dt = clock.tick(60) / 1000.0;  self._t += dt
-            self.screen = pygame.display.get_surface() or self.screen
             mouse = pygame.mouse.get_pos()
             for event in pygame.event.get():
                 if _handle_global_key(event):         continue
@@ -714,7 +713,6 @@ class ClientSetupMenu:
         clock = pygame.time.Clock()
         while True:
             dt = clock.tick(60) / 1000.0;  self._t += dt
-            self.screen = pygame.display.get_surface() or self.screen
             mouse = pygame.mouse.get_pos()
             
             # Periodically check for discovered rooms
@@ -894,6 +892,8 @@ class HostLobby:
         self._lbl_f    = pygame.font.SysFont("Arial", 17)
         self._status_f = pygame.font.SysFont("Arial", 14, bold=True)
         self._hint_f   = pygame.font.SysFont("Arial", 13)
+        self._wait_f   = pygame.font.SysFont("Arial", 26, bold=True)
+        self._wait_f2  = pygame.font.SysFont("Arial", 16)
 
         pvp = (mode == 3)
         # Phase 11.2: Picker always centered; pvp_mode only controls marker display
@@ -916,7 +916,6 @@ class HostLobby:
         clock = pygame.time.Clock()
         while True:
             dt = clock.tick(60) / 1000.0;  self._t += dt
-            self.screen = pygame.display.get_surface() or self.screen
             mouse = pygame.mouse.get_pos()
 
             for event in pygame.event.get():
@@ -927,8 +926,7 @@ class HostLobby:
                     self._close(); return "back"
                 self._picker.handle_event(event)
                 if self._btn_start.is_clicked(event,
-                                              disabled=not self._client_handshaked
-                                              and self.mode == 3):
+                                              disabled=not self._client_handshaked):
                     outcome = self._run_game()
                     if outcome == "settings": return "settings"
                 if self._btn_kick.is_clicked(event) and self._net.is_connected():
@@ -1052,22 +1050,21 @@ class HostLobby:
         game.run()
 
         # Back in lobby: instant broadcast + reset state
-        self._lobby_timer       = 999.0
-        self._client_handshaked = False
+        self._lobby_timer = 999.0
+        # Do not reset _client_handshaked here; rely on network timeout or client_left()
         print("DEBUG: Host returned to lobby")
         return "settings" if getattr(game, "_return_to_settings", False) else "back"
 
     def _draw_waiting_for_ready(self) -> None:
         """Brief loading screen while host waits for ready_for_map."""
         self.screen.fill(MENU_BG)
-        f = pygame.font.SysFont("Arial", 26, bold=True)
-        t = f.render("Waiting for client readiness …", True, ACCENT)
+        t = self._wait_f.render("Waiting for client readiness …", True, ACCENT)
         self.screen.blit(t, ((SCREEN_W - t.get_width())  // 2,
-                              (SCREEN_H - t.get_height()) // 2))
-        s = pygame.font.SysFont("Arial", 16).render(
+                               (SCREEN_H - t.get_height()) // 2))
+        s = self._wait_f2.render(
             "Establishing connection …", True, C_LABEL)
         self.screen.blit(s, ((SCREEN_W - s.get_width()) // 2,
-                              SCREEN_H // 2 + 40))
+                               SCREEN_H // 2 + 40))
         pygame.display.flip()
 
     def _close(self) -> None:
@@ -1114,8 +1111,8 @@ class HostLobby:
         self.screen.blit(status, ((SCREEN_W - status.get_width()) // 2,
                                    SCREEN_H // 2 + 92))
 
-        # Start button: modes 1+2 always allowed (solo/coop); mode 3 only with client
-        start_disabled = (pvp and not self._client_handshaked)
+        # Start button: requires connected client for any hosted mode
+        start_disabled = not self._client_handshaked
         self._btn_start.draw(self.screen, mouse, disabled=start_disabled)
         self._btn_kick.draw(self.screen, mouse, disabled=not self._net.is_connected())
         self._btn_settings.draw(self.screen, mouse)
@@ -1184,7 +1181,6 @@ class ClientLobby:
 
         while True:
             dt = clock.tick(60) / 1000.0;  self._t += dt
-            self.screen = pygame.display.get_surface() or self.screen
             mouse = pygame.mouse.get_pos()
 
             for event in pygame.event.get():
@@ -1385,31 +1381,10 @@ def _run_solo(screen: pygame.Surface,
               car_class: str, length: int, speed_scale: float) -> None:
     from game  import Game
     from track import Track
-    import camera as _cam
     track = Track.generate(length=length)
-    game  = Game.__new__(Game)
-    game.screen            = screen
-    game.clock             = pygame.time.Clock()
-    game.running           = True
-    game.mode              = 1
-    game.pings             = []
-    game._return_to_menu   = False
-    game._return_to_lobby  = False
-    game._lobby_initiator  = ""
-    game._paused           = False
-    game._pause_btn_rects  = {}
-    game.speed_scale       = speed_scale
-    game._locked_class0    = car_class
-    game._locked_class1    = "balanced"
-    game._warn_font        = pygame.font.SysFont("Arial", 18, bold=True)
-    game._countdown_font   = pygame.font.SysFont("Arial", 160, bold=True)
-    game._win_font         = pygame.font.SysFont("Arial", 72, bold=True)
-    game._sub_font         = pygame.font.SysFont("Arial", 28, bold=True)
-    game._pause_font       = pygame.font.SysFont("Arial", 80, bold=True)
-    game._flash_surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-    game._fog_surf   = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-    game.camera = _cam.Camera()
-    game._init_game_objects(track=track)
+    game  = Game(screen=screen, locked_class0=car_class)
+    game.speed_scale = speed_scale
+    game.reset(track=track)
     pygame.display.set_caption("Panic Pilot – SOLO  |  ESC/P=Pause  R=Reset")
     game.run()
 
@@ -1484,7 +1459,6 @@ class SettingsScene:
             dt = clock.tick(60) / 1000.0
             self._t     += dt
             self._test_t = max(0.0, self._test_t - dt)
-            self.screen = pygame.display.get_surface() or self.screen
             mouse = pygame.mouse.get_pos()
 
             for event in pygame.event.get():

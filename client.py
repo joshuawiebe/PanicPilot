@@ -47,11 +47,10 @@ class ClientGame:
     def __init__(self, host_ip: str,
                  net: "ClientConnection | None" = None,
                  car_class_host: str = "balanced",
-                 car_class_client: str = "balanced",
-                 host_room_name: str = "Host",
-                 client_room_name: str = "Client") -> None:
-        existing = pygame.display.get_surface()
-        if existing is None:
+                  car_class_client: str = "balanced",
+                  host_room_name: str = "Host",
+                  client_room_name: str = "Client") -> None:
+        if screen is None:
             pygame.init()
             import settings as _s
             if getattr(_s, "FULLSCREEN", False):
