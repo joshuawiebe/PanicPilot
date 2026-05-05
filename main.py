@@ -538,7 +538,7 @@ class MainMenu:
 
 class SoloClassPicker:
     """Phase 11.1: pvp_mode=False, no coop info (no client in solo)."""
-    SPEED_OPTIONS = [("▾  Slow", 0.70), ("▸  Normal", 1.00), ("▴  Fast", 1.40)]
+    SPEED_OPTIONS = [("Slow", 0.70), ("Normal", 1.00), ("Fast", 1.40)]
 
     def __init__(self, screen: pygame.Surface) -> None:
         self.screen = screen;  self._t = 0.0
@@ -576,10 +576,16 @@ class SoloClassPicker:
             # Solo: show_coop_info always False
             self._picker.draw(self.screen, show_coop_info=False)
             self._slider.draw(self.screen)
-            spd_lbl, _ = self.SPEED_OPTIONS[self._speed_idx]
+            spd_lbl, spd_val = self.SPEED_OPTIONS[self._speed_idx]
             orig = self._btn_speed.label
             self._btn_speed.label = f"Speed: {spd_lbl}"
             self._btn_speed.draw(self.screen, mouse)
+            bars_c = ACCENT2 if spd_val >= 1.4 else (100, 180, 255) if spd_val <= 0.7 else ACCENT
+            bw, bh, bg = 8, 10, 3
+            bx = self._btn_speed.rect.right - 52
+            by = self._btn_speed.rect.centery - bh // 2
+            for b in range(1 if spd_val <= 0.7 else 2 if spd_val <= 1.0 else 3):
+                pygame.draw.rect(self.screen, bars_c, (bx + b * (bw + bg), by, bw, bh), border_radius=2)
             self._btn_speed.label = orig
             self._btn_start.draw(self.screen, mouse)
             self._btn_back.draw(self.screen, mouse)
@@ -589,7 +595,7 @@ class SoloClassPicker:
 # ── Host Setup ────────────────────────────────────────────────────────────────
 
 class HostSetupMenu:
-    SPEED_OPTIONS = [("▾  Slow", 0.70), ("▸  Normal", 1.00), ("▴  Fast", 1.40)]
+    SPEED_OPTIONS = [("Slow", 0.70), ("Normal", 1.00), ("Fast", 1.40)]
 
     def __init__(self, screen: pygame.Surface) -> None:
         self.screen = screen;  self._t = 0.0
@@ -663,10 +669,16 @@ class HostSetupMenu:
             m_col    = self._mode_colors.get(cur_mode, C_LABEL)
             m_lbl    = self._lbl_f.render(self._mode_labels[cur_mode], True, m_col)
             self.screen.blit(m_lbl, ((SCREEN_W - m_lbl.get_width()) // 2, SCREEN_H // 2 - 12))
-            spd_lbl, _ = self.SPEED_OPTIONS[self._speed_idx]
+            spd_lbl, spd_val = self.SPEED_OPTIONS[self._speed_idx]
             orig = self._btn_speed.label
             self._btn_speed.label = f"Speed: {spd_lbl}"
             self._btn_speed.draw(self.screen, mouse)
+            bars_c = ACCENT2 if spd_val >= 1.4 else (100, 180, 255) if spd_val <= 0.7 else ACCENT
+            bw, bh, bg = 8, 10, 3
+            bx = self._btn_speed.rect.right - 52
+            by = self._btn_speed.rect.centery - bh // 2
+            for b in range(1 if spd_val <= 0.7 else 2 if spd_val <= 1.0 else 3):
+                pygame.draw.rect(self.screen, bars_c, (bx + b * (bw + bg), by, bw, bh), border_radius=2)
             self._btn_speed.label = orig
             self._btn_mode.draw(self.screen, mouse, disabled=client_connected)
             self._btn_lobby.draw(self.screen, mouse)
