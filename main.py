@@ -80,6 +80,31 @@ CLASS_COLORS = {
     "tank":      ( 50, 175,  55),
 }
 CLASS_ICONS = {"balanced": "◈", "speedster": "▶▶", "tank": "⬡"}
+
+
+def _draw_class_icon(surface: pygame.Surface, cls: str, rect: pygame.Rect, color: tuple) -> None:
+    """Draw a geometric icon for the class without relying on system fonts."""
+    cx, cy = rect.centerx, rect.centery
+    if cls == "balanced":
+        # Diamond shape
+        pts = [(cx, cy - 12), (cx + 10, cy), (cx, cy + 12), (cx - 10, cy)]
+        pygame.draw.polygon(surface, color, pts, 2)
+        pygame.draw.circle(surface, color, (cx, cy), 3)
+    elif cls == "speedster":
+        # Double arrows
+        for dx in (-4, 6):
+            pts = [(cx + dx - 5, cy - 8), (cx + dx + 8, cy), (cx + dx - 5, cy + 8)]
+            pygame.draw.polygon(surface, color, pts, 2)
+    elif cls == "tank":
+        # Hexagon
+        pts = []
+        for i in range(6):
+            angle = math.radians(60 * i - 30)
+            pts.append((cx + 11 * math.cos(angle), cy + 11 * math.sin(angle)))
+        pygame.draw.polygon(surface, color, pts, 2)
+        pygame.draw.rect(surface, color, (cx - 4, cy - 4, 8, 8), 1)
+    else:
+        pygame.draw.circle(surface, color, (cx, cy), 8, 2)
 CLASS_DESCRIPTIONS = {
     "balanced":  "Balanced  –  Good grip, normal speed",
     "speedster": "Speedy  –  High speed, slippery & thirsty",
@@ -415,9 +440,8 @@ class ClassPicker:
             pygame.draw.rect(surface, bc, r, bw, border_radius=10)
 
             cs   = CAR_CLASSES[cls]
-            icon = self._fi.render(CLASS_ICONS.get(cls, "•"), True,
-                                   col if active else (60, 75, 100))
-            surface.blit(icon, (r.x + 10, r.y + r.h // 2 - icon.get_height() // 2))
+            icon_rect = pygame.Rect(r.x + 4, r.y + 14, 28, 90)
+            _draw_class_icon(surface, cls, icon_rect, col if active else (60, 75, 100))
 
             name = self._fn.render(cs["display"], True,
                                    col if active else (90, 110, 150))
@@ -514,7 +538,7 @@ class MainMenu:
 
 class SoloClassPicker:
     """Phase 11.1: pvp_mode=False, no coop info (no client in solo)."""
-    SPEED_OPTIONS = [("🐢  Slow", 0.70), ("🏎  Normal", 1.00), ("⚡  Fast", 1.40)]
+    SPEED_OPTIONS = [("▾  Slow", 0.70), ("▸  Normal", 1.00), ("▴  Fast", 1.40)]
 
     def __init__(self, screen: pygame.Surface) -> None:
         self.screen = screen;  self._t = 0.0
@@ -565,7 +589,7 @@ class SoloClassPicker:
 # ── Host Setup ────────────────────────────────────────────────────────────────
 
 class HostSetupMenu:
-    SPEED_OPTIONS = [("🐢  Slow", 0.70), ("🏎  Normal", 1.00), ("⚡  Fast", 1.40)]
+    SPEED_OPTIONS = [("▾  Slow", 0.70), ("▸  Normal", 1.00), ("▴  Fast", 1.40)]
 
     def __init__(self, screen: pygame.Surface) -> None:
         self.screen = screen;  self._t = 0.0
@@ -579,18 +603,17 @@ class HostSetupMenu:
                 s.connect(("8.8.8.8", 80));  self._own_ip = s.getsockname()[0]
         except OSError:
             self._own_ip = _sock.gethostbyname(_sock.gethostname())
-        cx = SCREEN_W // 2
-        self._room_input = TextInput(cx, SCREEN_H//2 - 120, "Room name (shown in discovery)")
         import settings as _s
         username = getattr(_s, "USERNAME", "").strip()
-        self._room_input.text = f"{username}'s Room" if username else f"Host ({self._own_ip})"
-        self._slider   = Slider(cx, SCREEN_H//2 - 55, "Track Length (Tiles)", 10, 50, 20)
+        self._room_label = f"{username}'s Room" if username else f"Host ({self._own_ip})"
+        cx = SCREEN_W // 2
+        self._slider   = Slider(cx, SCREEN_H // 2 - 80, "Track Length (Tiles)", 10, 50, 20)
         self._modes    = [1, 2, 3]
         self._mode_idx = 0
         self._speed_idx = 1
-        self._mode_labels = {1: "Split Control  – both control one car",
-                             2: "Panic Pilot  – fog, navigator pings",
-                             3: "PvP Racing  – two cars, one winner"}
+        self._mode_labels = {1: "Split Control  \u2013 both control one car",
+                             2: "Panic Pilot  \u2013 fog, navigator pings",
+                             3: "PvP Racing  \u2013 two cars, one winner"}
         self._mode_colors = {1: (100, 180, 255), 2: ACCENT, 3: ACCENT2}
         y0 = SCREEN_H // 2 + 40
         self._btn_speed = Button(cx, y0,       "Speed",           w=290, h=50)
@@ -598,14 +621,12 @@ class HostSetupMenu:
         self._btn_lobby = Button(cx, y0 + 136, "  OPEN LOBBY  ", accent=ACCENT2)
         self._btn_back  = Button(cx, y0 + 204, "  Back  ",      w=180, h=44)
 
-    def run(self, prefill: dict | None = None) -> tuple | None:
+    def run(self, prefill: dict | None = None, client_connected: bool = False) -> tuple | None:
         if prefill:
             mode_val = prefill.get("mode", 1)
             self._mode_idx = self._modes.index(mode_val) if mode_val in self._modes else 0
             self._speed_idx = prefill.get("speed_idx", 1)
             self._slider.value = prefill.get("length", 20)
-            if "room_name" in prefill:
-                self._room_input.text = prefill.get("room_name", self._room_input.text)
         clock = pygame.time.Clock()
         while True:
             dt = clock.tick(60) / 1000.0;  self._t += dt
@@ -615,23 +636,23 @@ class HostSetupMenu:
                 if event.type == pygame.QUIT:         return None
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     return None
-                self._room_input.handle_event(event)
                 self._slider.handle_event(event)
                 if self._btn_speed.is_clicked(event):
                     self._speed_idx = (self._speed_idx + 1) % len(self.SPEED_OPTIONS)
-                if self._btn_mode.is_clicked(event):
+                if self._btn_mode.is_clicked(event) and not client_connected:
                     self._mode_idx  = (self._mode_idx  + 1) % len(self._modes)
                 if self._btn_lobby.is_clicked(event):
                     _, scale = self.SPEED_OPTIONS[self._speed_idx]
-                    room_name = self._room_input.text.strip() or f"Host {self._own_ip}"
-                    return self._modes[self._mode_idx], self._slider.value, scale, room_name
+                    return self._modes[self._mode_idx], self._slider.value, scale
                 if self._btn_back.is_clicked(event):  return None
             self.screen.fill(MENU_BG);  _draw_bg(self.screen, self._t)
             _draw_title(self.screen, "HOST SETTINGS", 72, self._title_f)
-            self._room_input.draw(self.screen)
+            room_display = self._lbl_f.render(f"Room: {self._room_label}", True, C_LABEL)
+            self.screen.blit(room_display,
+                             ((SCREEN_W - room_display.get_width()) // 2, SCREEN_H // 2 - 120))
             ip_hint = self._ip_lbl.render("Your IP (for the client):", True, C_LABEL)
             ip_val  = self._ip_font.render(f"  {self._own_ip}:54321  ", True, ACCENT)
-            box = ip_val.get_rect(center=(SCREEN_W//2, 144))
+            box = ip_val.get_rect(center=(SCREEN_W // 2, 144))
             _shadow_rect(self.screen, box.inflate(22, 12), radius=8)
             pygame.draw.rect(self.screen, (10, 20, 45), box.inflate(22, 12), border_radius=8)
             pygame.draw.rect(self.screen, C_BTN_BORDER, box.inflate(22, 12), 2, border_radius=8)
@@ -641,13 +662,13 @@ class HostSetupMenu:
             cur_mode = self._modes[self._mode_idx]
             m_col    = self._mode_colors.get(cur_mode, C_LABEL)
             m_lbl    = self._lbl_f.render(self._mode_labels[cur_mode], True, m_col)
-            self.screen.blit(m_lbl, ((SCREEN_W - m_lbl.get_width()) // 2, SCREEN_H//2 - 8))
+            self.screen.blit(m_lbl, ((SCREEN_W - m_lbl.get_width()) // 2, SCREEN_H // 2 - 12))
             spd_lbl, _ = self.SPEED_OPTIONS[self._speed_idx]
             orig = self._btn_speed.label
             self._btn_speed.label = f"Speed: {spd_lbl}"
             self._btn_speed.draw(self.screen, mouse)
             self._btn_speed.label = orig
-            self._btn_mode.draw(self.screen, mouse)
+            self._btn_mode.draw(self.screen, mouse, disabled=client_connected)
             self._btn_lobby.draw(self.screen, mouse)
             self._btn_back.draw(self.screen, mouse)
             pygame.display.flip()
@@ -815,7 +836,7 @@ class ClientSetupMenu:
                 pygame.draw.rect(self.screen, bg, rect, border_radius=6)
                 pygame.draw.rect(self.screen, border, rect, 1, border_radius=6)
                 
-                text = self._small_f.render(f"🎮 {room_name} ({ip})", True, 
+                text = self._small_f.render(f"[*]  {room_name}  ({ip})", True,
                                            ACCENT2 if hovered else C_LABEL)
                 self.screen.blit(text, (rect.x + 12, rect.centery - text.get_height() // 2))
                 
@@ -1069,15 +1090,15 @@ class HostLobby:
         _draw_title(self.screen, "HOST LOBBY", 42, self._title_f, ACCENT2)
         room_txt = self._lbl_f.render(f"Room: {self._room_name}", True, C_LABEL)
         self.screen.blit(room_txt,
-                         ((SCREEN_W - room_txt.get_width()) // 2, 84))
+                         ((SCREEN_W - room_txt.get_width()) // 2, 80))
 
         modes_lbl = {1: "Split Control", 2: "Panic Pilot (Fog)", 3: "PvP Racing"}
         modes_col = {1: (100, 180, 255), 2: ACCENT, 3: ACCENT2}
         info_col  = modes_col.get(self.mode, C_LABEL)
         info = self._lbl_f.render(
-            f"Mode: {modes_lbl.get(self.mode,'?')}   •   "
+            f"Mode: {modes_lbl.get(self.mode,'?')}   \u2022   "
             f"Track: {self.length} Tiles", True, info_col)
-        self.screen.blit(info, ((SCREEN_W - info.get_width()) // 2, 94))
+        self.screen.blit(info, ((SCREEN_W - info.get_width()) // 2, 104))
 
         # Phase 11.2: locked_classes & coop_info correctly per mode
         pvp       = (self.mode == 3)
@@ -1524,26 +1545,78 @@ class SettingsScene:
         pygame.display.flip()
 
 
+class _FirstStartSetup:
+    """Shown only on first launch when no username is set."""
+
+    def __init__(self, screen: pygame.Surface) -> None:
+        self.screen = screen
+        self._t = 0.0
+        cx = SCREEN_W // 2
+        self._title_f = pygame.font.SysFont("Arial", 42, bold=True)
+        self._sub_f = pygame.font.SysFont("Arial", 18)
+        self._hint_f = pygame.font.SysFont("Arial", 14)
+
+        self._inp = TextInput(cx, SCREEN_H // 2 - 20, "Enter your display name")
+        self._inp.active = True
+
+        self._btn_ok = Button(cx, SCREEN_H // 2 + 60, "  CONTINUE  ",
+                              accent=ACCENT)
+
+    def run(self) -> None:
+        import settings as _s
+        clock = pygame.time.Clock()
+        while True:
+            dt = clock.tick(60) / 1000.0
+            self._t += dt
+            mouse = pygame.mouse.get_pos()
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    raise SystemExit
+                self._inp.handle_event(event)
+                if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    if self._inp.text.strip():
+                        _s.USERNAME = self._inp.text.strip()
+                        _s.save_settings()
+                        return
+                if self._btn_ok.is_clicked(event):
+                    if self._inp.text.strip():
+                        _s.USERNAME = self._inp.text.strip()
+                        _s.save_settings()
+                        return
+
+            self.screen.fill(MENU_BG)
+            _draw_bg(self.screen, self._t)
+            _draw_title(self.screen, "WELCOME TO PANIC PILOT", 80, self._title_f, ACCENT2)
+            sub = self._sub_f.render("Choose a name to show other players", True, C_LABEL)
+            self.screen.blit(sub, ((SCREEN_W - sub.get_width()) // 2, SCREEN_H // 2 - 80))
+            self._inp.draw(self.screen)
+            self._btn_ok.draw(self.screen, mouse)
+            h = self._hint_f.render("You can change this anytime in Settings", True, (60, 80, 110))
+            self.screen.blit(h, ((SCREEN_W - h.get_width()) // 2, SCREEN_H // 2 + 120))
+            pygame.display.flip()
+
+
 # ── Entry Point ────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    # Load persisted settings before initialising the display
     import settings as _s
     _s.load_settings()
 
-    # Linear filtering makes pygame.SCALED upscaling smooth at any screen size
     os.environ.setdefault("SDL_RENDER_SCALE_QUALITY", "linear")
     pygame.init()
-    # pygame.SCALED keeps the 1280×720 logical surface and stretches it to
-    # fill the actual window/screen — fixes the "small window in fullscreen" bug.
     screen = _set_display_mode(FULLSCREEN)
     pygame.display.set_caption("Panic Pilot")
 
-    # Initialize pygame.scrap for clipboard support (must be after display.set_mode)
     try:
         pygame.scrap.init()
     except Exception:
-        pass  # scrap not available on all platforms; subprocess fallback will be used
+        pass
+
+    if not getattr(_s, "USERNAME", "").strip():
+        _FirstStartSetup(screen).run()
+        _s.load_settings()
 
     # ── Phase 12: Initialize audio system ───────────────────────────
     _sm = None
@@ -1582,13 +1655,14 @@ def main() -> None:
             result   = settings.run(prefill=last_host_settings)
             if result is None:
                 continue
-            mode, length, speed_scale, room_name = result
+            mode, length, speed_scale = result
+            import settings as _s
+            username = getattr(_s, "USERNAME", "").strip()
+            room_name = f"{username}'s Room" if username else f"Host ({settings._own_ip})"
             last_host_settings = {
                 "mode": mode, "length": length,
                 "speed_idx": settings._speed_idx,
-                "room_name": room_name,
             }
-            # ── Phase 11.1: Lobby-Settings loop with persistent net ────────────
             existing_net = None
             while True:
                 if _sm: _sm.play_music("menu")
@@ -1598,22 +1672,21 @@ def main() -> None:
                 outcome = lobby.run()
 
                 if outcome == "settings":
-                    # Network stays alive – Client waits in their lobby
                     existing_net = lobby._net
+                    client_connected = existing_net.is_connected() if existing_net else False
                     result2 = HostSetupMenu(screen).run(
                         prefill={"mode": mode, "length": length,
-                                 "speed_idx": last_host_settings.get("speed_idx", 1),
-                                 "room_name": last_host_settings.get("room_name", "")})
+                                 "speed_idx": last_host_settings.get("speed_idx", 1)},
+                        client_connected=client_connected)
                     if result2 is None:
                         continue
-                    mode, length, speed_scale, room_name = result2[:4]
+                    mode, length, speed_scale = result2
                     last_host_settings = {"mode": mode, "length": length,
-                                          "speed_idx": last_host_settings.get("speed_idx", 1),
-                                          "room_name": room_name}
+                                          "speed_idx": last_host_settings.get("speed_idx", 1)}
                     continue
 
                 existing_net = None
-                break   # "back" → main menu
+                break
             if _sm: _sm.engine_stop()
 
         elif choice == "client":
