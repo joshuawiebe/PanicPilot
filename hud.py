@@ -178,14 +178,14 @@ class HUD:
             surface.blit(hint, (box_x + slot_w + 6,
                                  slot_y + slot_h//2 - hint.get_height()//2))
         elif inventory == "oil_drop":
-            # Black box with "Ö" (oil)
+            # Black box with "O" (oil)
             pygame.draw.rect(surface, (18, 16, 10),
                              (box_x, slot_y, slot_w, slot_h),
                              border_radius=4)
             pygame.draw.rect(surface, (70, 60, 20),
                              (box_x, slot_y, slot_w, slot_h),
                              2, border_radius=4)
-            item_lbl = self._font_md.render("Ö", True, (130, 110, 40))
+            item_lbl = self._font_md.render("O", True, (130, 110, 40))
             surface.blit(item_lbl, (box_x + slot_w//2 - item_lbl.get_width()//2,
                                     slot_y + slot_h//2 - item_lbl.get_height()//2))
             hint = self._font_sm.render("[SPACE]", True, GRAY)
