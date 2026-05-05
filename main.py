@@ -71,19 +71,7 @@ def _set_display_mode(fullscreen: bool) -> pygame.Surface:
 
 
 def _handle_global_key(event: "pygame.event.Event") -> bool:
-    """Handle keys that work everywhere (F11 = fullscreen toggle).
-    Returns True if the event was consumed."""
-    if event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
-        import settings as _s
-        _s.FULLSCREEN = not _s.FULLSCREEN
-        screen = _set_display_mode(_s.FULLSCREEN)
-        _s.save_settings()
-        try:
-            caption = pygame.display.get_caption()[0]
-        except Exception:
-            caption = "Panic Pilot"
-        pygame.display.set_caption(caption)
-        return True
+    """Handle global keys. Returns True if the event was consumed."""
     return False
 
 CLASS_COLORS = {
@@ -593,7 +581,9 @@ class HostSetupMenu:
             self._own_ip = _sock.gethostbyname(_sock.gethostname())
         cx = SCREEN_W // 2
         self._room_input = TextInput(cx, SCREEN_H//2 - 120, "Room name (shown in discovery)")
-        self._room_input.text = f"Host {self._own_ip}"
+        import settings as _s
+        username = getattr(_s, "USERNAME", "").strip()
+        self._room_input.text = f"{username}'s Room" if username else f"Host ({self._own_ip})"
         self._slider   = Slider(cx, SCREEN_H//2 - 55, "Track Length (Tiles)", 10, 50, 20)
         self._modes    = [1, 2, 3]
         self._mode_idx = 0

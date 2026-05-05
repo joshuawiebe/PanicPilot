@@ -45,11 +45,12 @@ LOCAL_PING_DURATION    = 5.0
 
 class ClientGame:
     def __init__(self, host_ip: str,
+                 screen: "pygame.Surface | None" = None,
                  net: "ClientConnection | None" = None,
                  car_class_host: str = "balanced",
-                  car_class_client: str = "balanced",
-                  host_room_name: str = "Host",
-                  client_room_name: str = "Client") -> None:
+                 car_class_client: str = "balanced",
+                 host_room_name: str = "Host",
+                 client_room_name: str = "Client") -> None:
         if screen is None:
             pygame.init()
             import settings as _s
@@ -66,7 +67,7 @@ class ClientGame:
                 flags = pygame.RESIZABLE
             self.screen = pygame.display.set_mode((w, h), flags)
         else:
-            self.screen = existing
+            self.screen = screen
         self.clock   = pygame.time.Clock()
         self.running = True
 
@@ -322,6 +323,7 @@ class ClientGame:
                         if self._game_over or self._winner:
                             if event.key == pygame.K_ESCAPE:
                                 self.running = False
+                                self._return_to_lobby = True
                         else:
                             self._paused = not self._paused
                     elif event.key == pygame.K_m and (self._game_over or self._winner):

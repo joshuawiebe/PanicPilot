@@ -250,11 +250,10 @@ class Game:
             elif event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_ESCAPE, pygame.K_p):
                     if self.game_over or self.winner:
-                        # End-screen: ESC = Menu
                         if event.key == pygame.K_ESCAPE:
                             self.running = False
+                            self._return_to_lobby = True
                     else:
-                        # Toggle enhanced pause
                         self._paused = not self._paused
                         if _SM:
                             _SM.play_pause()

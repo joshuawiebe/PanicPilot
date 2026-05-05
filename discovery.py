@@ -23,9 +23,9 @@ log = logging.getLogger("discovery")
 # ── Constants ────────────────────────────────────────────────────────────────
 
 DISCOVERY_PORT = 54322          # Different from TCP port
-BEACON_INTERVAL = 2.0           # Send beacon every 2 seconds
-ROOM_TIMEOUT = 5.0              # Consider room dead if no beacon for 5 seconds
-DISCOVER_LISTEN_TIME = 4.0      # Listen for 4 seconds when discovering
+BEACON_INTERVAL = 1.5           # Send beacon every 1.5 seconds
+ROOM_TIMEOUT = 8.0              # Consider room dead if no beacon for 8 seconds
+DISCOVER_LISTEN_TIME = 6.0      # Listen for 6 seconds when discovering
 
 
 # ── Room Broadcaster (Host-side) ──────────────────────────────────────────────
@@ -142,7 +142,6 @@ class RoomListener:
             return
         
         with self._lock:
-            self._rooms.clear()
             self._running = True
         
         self._thread = threading.Thread(
