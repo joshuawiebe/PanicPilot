@@ -23,11 +23,16 @@ from track       import Track
 from walls       import WallSystem
 from hud         import HUD
 from entities    import (FuelCanister, BoostPad, OilSlick, ItemBox,
-                          GreenBoomerang, RedBoomerang,
-                          EntityParticleSystem, PLAYER_HOST, PLAYER_CLIENT)
+                           GreenBoomerang, RedBoomerang,
+                           EntityParticleSystem, PLAYER_HOST, PLAYER_CLIENT)
 from particles   import ParticleSystem
 from props       import PropManager
 from net         import ClientConnection
+
+try:
+    import main as _main_mod
+except Exception:
+    _main_mod = None
 
 logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
 
@@ -35,21 +40,42 @@ CLIENT_HOST_IP         = "127.0.0.1"
 NET_PORT               = 54321
 CONNECT_RETRY_INTERVAL = 2.0
 CONNECT_TIMEOUT        = 5.0
-LOCAL_PING_DURATION    = 1.0
+LOCAL_PING_DURATION    = 5.0
 
 
 class ClientGame:
     def __init__(self, host_ip: str,
                  net: "ClientConnection | None" = None,
                  car_class_host: str = "balanced",
-                 car_class_client: str = "balanced") -> None:
-        self.screen  = pygame.display.get_surface() or pygame.display.set_mode((SCREEN_W, SCREEN_H))
+                 car_class_client: str = "balanced",
+                 host_room_name: str = "Host",
+                 client_room_name: str = "Client") -> None:
+        existing = pygame.display.get_surface()
+        if existing is None:
+            pygame.init()
+            import settings as _s
+            if getattr(_s, "FULLSCREEN", False):
+                try:
+                    info = pygame.display.Info()
+                    w, h = info.current_w, info.current_h
+                except Exception:
+                    w, h = 1920, 1080
+                flags = pygame.FULLSCREEN
+            else:
+                w = getattr(_s, "DISPLAY_W", 1920)
+                h = getattr(_s, "DISPLAY_H", 1080)
+                flags = pygame.RESIZABLE
+            self.screen = pygame.display.set_mode((w, h), flags)
+        else:
+            self.screen = existing
         self.clock   = pygame.time.Clock()
         self.running = True
 
         # Klassen beim Start aus der Lobby
         self._car_class_host   = car_class_host
         self._car_class_client = car_class_client
+        self._host_room_name   = host_room_name
+        self._client_room_name = client_room_name
 
         self.track:     Optional[Track]       = None
         self.car:       Optional[Car]         = None   # Auto A (Host)
@@ -91,6 +117,7 @@ class ClientGame:
         
         self._pending_mode_request: int | None = None
         self._mode_request_timer:   float      = 0.0
+        self._mode_switch_accepted: bool       = False
 
         # Phase 12.2: Latency tracking for ping visualization
         self._frame_times: list[float] = []
@@ -280,11 +307,17 @@ class ClientGame:
 
             # ── Events ───────────────────────────────────────────────────────
             for event in pygame.event.get():
+                if _main_mod and _main_mod._handle_global_key(event):
+                    continue
                 if event.type == pygame.QUIT:
                     self.running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if self._paused:
                         self._handle_pause_click(event.pos)
+                    elif self._mode == 2:
+                        wx, wy = self.camera.s2w(float(event.pos[0]), float(event.pos[1]))
+                        self._pending_ping = (wx, wy)
+                        self._local_pings.append([wx, wy, LOCAL_PING_DURATION])
                 elif event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_ESCAPE, pygame.K_p):
                         if self._game_over or self._winner:
@@ -297,6 +330,8 @@ class ClientGame:
                         self._return_to_menu = True
                     elif event.key == pygame.K_y and self._pending_mode_request is not None:
                         self._net.send_mode_change_confirm()
+                        if not self._game_over and not self._winner:
+                            self._mode_switch_accepted = True
                         self._pending_mode_request = None
                     elif event.key == pygame.K_n and self._pending_mode_request is not None:
                         self._net.send_mode_change_deny()
@@ -313,11 +348,6 @@ class ClientGame:
                         self._pending_use_item = True
                 elif event.type == pygame.MOUSEWHEEL and self._mode == 2:
                     self.camera.handle_zoom(event.y)
-                elif (event.type == pygame.MOUSEBUTTONDOWN
-                      and event.button == 1 and self._mode == 2):
-                    wx, wy = self.camera.s2w(float(event.pos[0]), float(event.pos[1]))
-                    self._pending_ping = (wx, wy)
-                    self._local_pings.append([wx, wy, LOCAL_PING_DURATION])
 
             if not self._net.is_connected():
                 self._draw_disconnected_screen()
@@ -330,9 +360,9 @@ class ClientGame:
                 self._do_return_to_lobby()
                 break
 
-            # Mode change request from host (only post-race)
+            # Mode change request from host (post-race OR mid-game)
             requested_mode = self._net.get_mode_change_request()
-            if requested_mode is not None and (self._game_over or self._winner):
+            if requested_mode is not None:
                 self._pending_mode_request = requested_mode
                 self._mode_request_timer   = 10.0  # 10 second timeout to respond
 
@@ -404,6 +434,14 @@ class ClientGame:
                         self._net.send_mode_change_deny()
                         self._pending_mode_request = None
 
+                # Handle mid-game mode switch - reset state when host switches
+                if self._mode_switch_accepted:
+                    if packet.get("game_over") and not self._game_over:
+                        # Host triggered reset for mode change
+                        self._game_over = True
+                        self._winner = "mode_change"
+                        self._mode_switch_accepted = False
+
             self._draw()
 
         # Phase 11: Client hat Lobby initiiert → Host informieren
@@ -467,6 +505,13 @@ class ClientGame:
                 obj.set_pvp_mode(pvp)
                 obj.collected_by.clear()
             self._update_caption()
+            # Mid-game mode change: rebuild track if map data changed
+            if self._mode_switch_accepted:
+                self._mode_switch_accepted = False
+                self._game_over = False
+                self._winner = None
+                self._countdown = 3.0
+                self._go_timer = 0.0
 
         # Auto B (Modus 3)
         if "car1" in packet and self.car_b:
@@ -531,7 +576,6 @@ class ClientGame:
     # ── Rendering ─────────────────────────────────────────────────────────────
 
     def _draw(self) -> None:
-        self.screen = pygame.display.get_surface() or self.screen
         if self.car is None or self.track is None:
             self._draw_waiting_screen("Waiting for map data …")
             return
@@ -573,10 +617,12 @@ class ClientGame:
             brang.draw(self.screen, off_x, off_y, zoom)
 
         # Local pings (navigator)
+        now_ms = pygame.time.get_ticks()
         for wx, wy, timer in self._local_pings:
             sx, sy = self.camera.w2s(wx, wy)
             frac   = max(0.0, timer / LOCAL_PING_DURATION)
-            alpha  = int(220 * frac)
+            pulse  = 0.9 + 0.1 * math.sin(now_ms / 150.0)
+            alpha  = int(220 * frac * pulse)
             r      = int(max(3, 10 + 8 * frac))
             tmp    = pygame.Surface((r*2+20, r*2+20), pygame.SRCALPHA)
             mid    = r + 10
@@ -608,9 +654,20 @@ class ClientGame:
         if self._game_over or self._winner:
             self._draw_winner_overlay()
 
-        # Mode change request dialog (post-race)
+        # Mode change request dialog (post-race or mid-game)
         if self._pending_mode_request is not None:
             self._draw_mode_change_dialog()
+
+        # Mid-game mode switch countdown
+        if self._mode_switch_accepted and not self._game_over:
+            overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 160))
+            self.screen.blit(overlay, (0, 0))
+            modes = {1: "Split Control", 2: "Panic Pilot", 3: "PvP Racing"}
+            mode_name = modes.get(self._mode, "?")
+            cd_font = pygame.font.SysFont("Arial", 48, bold=True)
+            cd_txt = cd_font.render(f"Switching to {mode_name}…", True, CYAN)
+            self.screen.blit(cd_txt, ((SCREEN_W - cd_txt.get_width()) // 2, SCREEN_H // 2 - 30))
 
         # ── Phase 5.3: Pause-Overlay ─────────────────────────────────────────
         if self._paused:
@@ -655,8 +712,12 @@ class ClientGame:
 
         f_big = pygame.font.SysFont("Arial", 22, bold=True)
         f_sm  = pygame.font.SysFont("Arial", 16)
+        if self._game_over or self._winner:
+            sub_txt = f"[Y] Accept   [N] Decline   (auto-decline in {secs_left}s)"
+        else:
+            sub_txt = f"[Y] Accept (restarts race)   [N] Decline   ({secs_left}s)"
         title = f_big.render(f"Host wants to switch to {mode_name}", True, ORANGE)
-        sub   = f_sm.render(f"[Y] Accept   [N] Decline   (auto-decline in {secs_left}s)", True, WHITE)
+        sub   = f_sm.render(sub_txt, True, WHITE)
         self.screen.blit(title, (px + (panel_w - title.get_width()) // 2, py + 16))
         self.screen.blit(sub,   (px + (panel_w - sub.get_width())   // 2, py + 54))
 
@@ -726,9 +787,9 @@ class ClientGame:
         cy = SCREEN_H // 2 - 80
         if self._mode == 3:
             if self._winner == "host":
-                txt, color = "HOST WINS!", (210, 45, 45)
+                txt, color = f"{self._host_room_name.upper()} WINS!", (210, 45, 45)
             elif self._winner == "client":
-                txt, color = "CLIENT WINS!", (30, 100, 210)
+                txt, color = f"{self._client_room_name.upper()} WINS!", (30, 100, 210)
             else:
                 txt, color = "OUT OF FUEL!", ORANGE
         else:

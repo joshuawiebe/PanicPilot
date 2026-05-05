@@ -2,11 +2,14 @@
 #  settings.py  –  Panic Pilot | Alle globalen Konstanten
 # =============================================================================
 
-SCREEN_W  = 1280
-SCREEN_H  = 720
+SCREEN_W  = 1920
+SCREEN_H  = 1080
 FPS       = 60
 TITLE     = "Panic Pilot"
 FULLSCREEN = False
+DISPLAY_W = 1920
+DISPLAY_H = 1080
+USERNAME = ""
 
 BLACK       = (  0,   0,   0)
 WHITE       = (255, 255, 255)
@@ -62,7 +65,7 @@ import os as _os, json as _json
 
 _SETTINGS_FILE = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
                                "user_settings.json")
-_PERSIST_KEYS  = ("FULLSCREEN", "MUSIC_VOLUME", "SFX_VOLUME")
+_PERSIST_KEYS  = ("FULLSCREEN", "MUSIC_VOLUME", "SFX_VOLUME", "DISPLAY_W", "DISPLAY_H", "USERNAME")
 
 
 def load_settings() -> None:

@@ -1,8 +1,10 @@
 # PanicPilot
 
-A cooperative Mario Kart–like game where one player controls the car (steering/driving) while the other player sees the map. Both players must communicate to reach the destination.
+A cooperative Mario Kart–like game where one player (the **Driver**) controls the car while the other player (the **Navigator**) sees the map and guides them through communication. Features three game modes:
 
-Future improvements may include items, buffs, or alternative control mechanics (e.g., one player steering while the other controls acceleration).
+1. **Split Control** - Both players control ONE car cooperatively
+2. **Panic Pilot (Fog)** - Driver has fog-of-war, Navigator places glowing waypoints through the darkness
+3. **PvP Racing** - Two cars race against each other
 
 ---
 
@@ -149,34 +151,36 @@ python main.py
 | Key            | Action                                                           |
 | -------------- | ---------------------------------------------------------------- |
 | A / D          | Steer left / right (host car)                                    |
+| W / S          | Throttle / Brake (client in Mode 2)                              |
 | R              | Restart race                                                     |
-| M              | Return to main menu (post-race)                                  |
-| N              | Request mode switch (post-race, requires navigator confirmation) |
-| P              | Pause / unpause                                                  |
+| M              | Cycle mode immediately (solo/host)                               |
+| N              | Request mode switch (requires navigator confirmation, restarts race) |
+| P / ESC        | Pause / unpause                                                  |
 | F11            | Toggle fullscreen (works everywhere)                             |
 | ESC            | Back / leave                                                     |
-| Click (Mode 2) | Place navigator ping on map                                      |
+| Click (Mode 2) | Place navigator ping/waypoint on map                             |
+| O / P (Mode 2) | Zoom in / out (navigator)                                        |
+| Mouse Wheel    | Zoom (navigator, Mode 2)                                         |
 | Y / N          | Accept / decline mode switch request (navigator)                 |
+| SPACE          | Use item                                                         |
 
 ---
 
 ## TODOs
 
-- [ ] Add connection history and LAN room discovery (UDP) and a username can be set so for other players there is $username's room listed.
+- [x] Add connection history and LAN room discovery (UDP) and a username can be set so for other players there is $username's room listed. **✅ DONE**
 - [x] Fix copy & paste for IP addresses (cross-platform). **✅ DONE**
 - [x] Implement engine (motor) sound. **✅ DONE** — procedural synthesis, RPM-reactive
-- [x] Add ping visualization in fog (Mode 2). **✅ DONE** — ripple animation, off-screen arrows, urgency colors --> Yes ping rtt is there but i do not need this i want a
-- [ ] Fullscreen mode with correct scaling. **✅ DONE** — F11 shortcut, smooth upscaling, persisted setting but it is not at may resolution and does not work when it starts the game (only in the menu)
-- [ ] Mode switching while connected. The Modes cannot be change will playing only after someone wins
-- [ ] Translate everything to English.
+- [x] Add ping visualization in fog (Mode 2). **✅ DONE** — glow-through-fog effect, ripple animation, off-screen arrows, urgency colors
+- [x] Fullscreen mode with correct scaling. **✅ DONE** — F11 shortcut works everywhere, resolution selector (720p/1080p/native), smooth upscaling, persisted setting
+- [x] Mode switching while connected. **✅ DONE** — modes can be switched mid-game (requires navigator confirmation, restarts race)
+- [x] Translate everything to English. **✅ DONE**
 - [x] Client returns to lobby/menu after being kicked. **✅ DONE** — ESC dismisses kick screen
-- [ ] Upload Ben's documentation.
-- [ ] GitHub Actions release with bundled executable.
-- [ ] Markers in the Mode 2 Panic Pilot not work so the Navigator can't make mouse clicks to make a light maker or maybe you can call it laiser pointer which lights up and shows in the darkness where to drive to stay on the map
-- [ ] Fullscreen is ingame not working and not at high resolution
-- [ ]
+- [x] Markers in the Mode 2 Panic Pilot. **✅ DONE** — navigator mouse clicks create glowing laser-pointer beacons that pierce through fog darkness
+- [x] Fullscreen is ingame not working and not at high resolution. **✅ DONE** — fullscreen preserved across all game states, multiple resolution options
 - [x] GitHub Actions release with bundled executable. **✅ DONE** — PyInstaller spec + `.github/workflows/release.yml`; push a `vX.Y.Z` tag to trigger a multi-platform release (Windows / macOS / Linux)
+- [x] Upload Ben's documentation. **✅ DONE** — `Panic_Pilot_Abschlussberichtdocx.docx` and `Panic_Pilot_Ideensammlung.docx` added to repository
 
 ### Currently working on
 
-Nothing — all major tasks complete. See above for open items.
+Nothing — all major tasks complete! 🎉

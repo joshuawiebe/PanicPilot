@@ -43,11 +43,16 @@ class HostGame(Game):
                  speed_scale: float = SPEED_SCALE_NORMAL,
                  net: "HostConnection | None" = None,
                  car_class_host: str = "balanced",
-                 car_class_client: str = "balanced") -> None:
+                 car_class_client: str = "balanced",
+                 screen: "pygame.Surface | None" = None,
+                 host_room_name: str = "Host",
+                 client_room_name: str = "Client") -> None:
         self._host_mode         = mode
         self._host_track_length = track_length
         self._host_speed_scale  = speed_scale
         self._generated_track   = Track.generate(length=track_length)
+        self._host_room_name    = host_room_name
+        self._client_room_name  = client_room_name
 
         # Netz: entweder extern (Lobby) oder neu erstellen
         if net is not None:
@@ -59,7 +64,7 @@ class HostGame(Game):
             self._owns_net = True
 
         # Klassen sind durch die Lobby-Auswahl gelockt
-        super().__init__(locked_class0=car_class_host,
+        super().__init__(screen=screen, locked_class0=car_class_host,
                          locked_class1=car_class_client)
         self.mode        = mode
         self.speed_scale = speed_scale
@@ -68,6 +73,7 @@ class HostGame(Game):
         self._pending_map_send   = False
         self._return_to_settings = False
         self._mode_switch_pending: int | None = None  # requested new mode, awaiting confirm
+        self._mode_change_countdown = 0.0
 
         self._status_font = pygame.font.SysFont("Arial", 15, bold=True)
         self._mode_font   = pygame.font.SysFont("Arial", 22, bold=True)
@@ -109,8 +115,8 @@ class HostGame(Game):
                 self.reset_for_mode(self.mode)
                 self._pending_map_send = True
                 self._update_caption()
-        elif event.key == pygame.K_n and (self.game_over or self.winner):
-            # Request mode switch post-race (cycle through modes)
+        elif event.key == pygame.K_n:
+            # Request mode switch (post-race OR mid-game)
             new_mode = (self.mode % 3) + 1
             if self._net.is_connected():
                 self._mode_switch_pending = new_mode
@@ -153,11 +159,26 @@ class HostGame(Game):
         # Mode switch: check for navigator confirm/deny
         if self._mode_switch_pending is not None:
             if self._net.client_confirmed_mode_change():
-                self.mode = self._mode_switch_pending
+                new_mode = self._mode_switch_pending
                 self._mode_switch_pending = None
-                self._update_caption()
+                self._mode_change_countdown = 3.0
             elif self._net.client_denied_mode_change():
                 self._mode_switch_pending = None
+
+        # Mode change countdown - execute switch when timer expires
+        if self._mode_change_countdown > 0:
+            self._mode_change_countdown -= dt
+            if self._mode_change_countdown <= 0:
+                self.mode = self._mode_switch_pending if self._mode_switch_pending else self.mode
+                self._mode_switch_pending = None
+                self.reset()
+                self._pending_map_send = True
+                self._countdown = 3.0
+                self._go_timer = 0.0
+                self._race_started = False
+                self.game_over = False
+                self.winner = None
+                self._update_caption()
 
         # Map-Handshake: einmalig nach neuem Client oder Reset
         if self._net.got_new_client() or self._pending_map_send:
@@ -260,6 +281,7 @@ class HostGame(Game):
         self.draw_world(self.screen)
         if self.mode == 2:
             csx, csy = self.camera.w2s(s.x, s.y)
+            self.draw_ping_glow_through_fog(self.screen)
             self.draw_fog(self.screen, (csx, csy))
         self.draw_pings(self.screen)
         self.draw_hud(self.screen)
@@ -303,7 +325,7 @@ class HostGame(Game):
             hint_txt = "[R]=Restart  [N]=Switch Mode  [M]=Menu  [S]=Settings"
             hint_color = CYAN
         else:
-            hint_txt  = "A/D=Steer  M=Mode  P=Pause  R=Reset"
+            hint_txt  = "A/D=Steer  N=Switch Mode  P=Pause  R=Reset"
             hint_color = GRAY
         hint = self._status_font.render(hint_txt, True, hint_color)
         self.screen.blit(hint, (12, SCREEN_H - 38))
@@ -314,6 +336,14 @@ class HostGame(Game):
             pending_txt = f"Requesting switch to {modes.get(self._mode_switch_pending, '?')} … (waiting for navigator)"
             plbl = self._status_font.render(pending_txt, True, ORANGE)
             self.screen.blit(plbl, (12, SCREEN_H - 58))
+
+        # Mode change countdown
+        if self._mode_change_countdown > 0:
+            modes = {1: "Split Control", 2: "Panic Pilot", 3: "PvP Racing"}
+            secs = int(self._mode_change_countdown) + 1
+            cd_txt = f"Switching to {modes.get(self.mode, '?')} in {secs}…"
+            cdlbl = pygame.font.SysFont("Arial", 28, bold=True).render(cd_txt, True, CYAN)
+            self.screen.blit(cdlbl, ((SCREEN_W - cdlbl.get_width()) // 2, SCREEN_H // 2 - 100))
 
     def run(self) -> None:
         try:

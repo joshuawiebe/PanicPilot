@@ -101,12 +101,18 @@ class HostConnection:
     def start(self) -> None:
         """
         Startet den Accept-Thread.
-        Kehrt sofort zurück — der Game-Loop kann weiterlaufen.
+        Kehrt zurück NACHDEM der Socket gebunden und bereit ist.
         """
         self._running = True
-        t = threading.Thread(target=self._accept_loop, daemon=True, name="host-accept")
+        # Event um zu signalisieren dass der Socket bereit ist
+        ready_event = threading.Event()
+        t = threading.Thread(target=self._accept_loop, args=(ready_event,), daemon=True, name="host-accept")
         t.start()
-        log.info(f"Host listening on port {self._port} …")
+        # Warte bis der Socket tatsächlich gebunden ist (max 3 Sekunden)
+        if not ready_event.wait(timeout=3.0):
+            log.error("Host socket timed out while binding")
+        else:
+            log.info(f"Host listening on port {self._port} …")
 
     def send_state(self, state_dict: dict) -> None:
         """Schickt Spielzustand an verbundenen Client. Sicher bei Disconnect."""
@@ -244,7 +250,7 @@ class HostConnection:
 
     # ─── Interne Threads ─────────────────────────────────────────────────────
 
-    def _accept_loop(self) -> None:
+    def _accept_loop(self, ready_event: threading.Event) -> None:
         """Wartet auf eine Client-Verbindung, startet dann den Recv-Thread."""
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -252,6 +258,8 @@ class HostConnection:
             server.bind(("", self._port))
             server.listen(1)
             server.settimeout(1.0)   # damit shutdown() nicht ewig wartet
+            # Signalisiere dass der Socket bereit ist
+            ready_event.set()
 
             while self._running:
                 try:
@@ -272,6 +280,7 @@ class HostConnection:
                 log.info("Client disconnected – waiting for new client …")
         except OSError as e:
             log.error(f"Server-Socket Fehler: {e}")
+            ready_event.set()  # Setze event auch bei Fehler damit start() nicht hängt
         finally:
             server.close()
 

@@ -36,6 +36,11 @@ from entities import (
 from particles import ParticleSystem
 from props import PropManager
 
+try:
+    import main as _main_mod
+except Exception:
+    _main_mod = None
+
 # Phase 12: Audio (lazy import – läuft auch ohne sound_manager.py)
 try:
     import sound_manager as _sound_mod
@@ -47,8 +52,8 @@ except Exception:
 FOG_ALPHA = 255
 FOG_RADIUS = int(min(SCREEN_W, SCREEN_H) * 0.085)
 
-PING_DURATION = 2.5
-MAX_PINGS = 8
+PING_DURATION = 5.0
+MAX_PINGS = 15
 PING_BLINK_HZ = 3.0
 
 COUNTDOWN_STEPS = [3, 2, 1]
@@ -74,11 +79,25 @@ class Game:
         screen: "pygame.Surface | None" = None,
         locked_class0: str = "balanced",
         locked_class1: str = "balanced",
+        host_room_name: str = "Host",
+        client_room_name: str = "Client",
     ) -> None:
 
         if screen is None:
             pygame.init()
-            self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+            import settings as _s
+            if getattr(_s, "FULLSCREEN", False):
+                try:
+                    info = pygame.display.Info()
+                    w, h = info.current_w, info.current_h
+                except Exception:
+                    w, h = 1920, 1080
+                flags = pygame.FULLSCREEN
+            else:
+                w = getattr(_s, "DISPLAY_W", 1920)
+                h = getattr(_s, "DISPLAY_H", 1080)
+                flags = pygame.RESIZABLE
+            self.screen = pygame.display.set_mode((w, h), flags)
         else:
             self.screen = screen
         pygame.display.set_caption(TITLE)
@@ -99,6 +118,9 @@ class Game:
         # Klassen sind vor dem Rennen gelockt – kein In-Game-Wechsel
         self._locked_class0 = locked_class0
         self._locked_class1 = locked_class1
+
+        self._host_room_name = host_room_name
+        self._client_room_name = client_room_name
 
         self._warn_font = pygame.font.SysFont("Arial", 18, bold=True)
         self._countdown_font = pygame.font.SysFont("Arial", 160, bold=True)
@@ -219,6 +241,8 @@ class Game:
 
     def handle_events(self) -> None:
         for event in pygame.event.get():
+            if _main_mod and _main_mod._handle_global_key(event):
+                continue
             if event.type == pygame.QUIT:
                 self.running = False
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -712,6 +736,47 @@ class Game:
         pygame.draw.circle(self._fog_surf, (0, 0, 0, 0), (cx, cy), FOG_RADIUS)
         surface.blit(self._fog_surf, (0, 0))
 
+    def draw_ping_glow_through_fog(self, surface: pygame.Surface) -> None:
+        """Draw ping glow effects that pierce through fog before fog is applied."""
+        car_x = self.cars[0].state.x
+        car_y = self.cars[0].state.y
+        now_ms = pygame.time.get_ticks()
+
+        for wx, wy, timer in self.pings:
+            sx, sy = self.camera.w2s(wx, wy)
+            frac = max(0.0, timer / PING_DURATION)
+
+            # Glow radius that pierces through fog
+            glow_radius = int(60 + 40 * frac)
+            world_dist = math.hypot(wx - car_x, wy - car_y)
+            dist_scale = min(1.0, world_dist / 800.0)
+            glow_radius = int(glow_radius * (0.7 + 0.3 * dist_scale))
+
+            # Color based on urgency
+            if frac > 0.5:
+                t = (frac - 0.5) * 2.0
+                r = int(0 * t + 255 * (1 - t))
+                g = int(220 * t + 165 * (1 - t))
+                b = int(255 * t + 0 * (1 - t))
+            else:
+                t = frac * 2.0
+                r = 255
+                g = int(165 * t + 60 * (1 - t))
+                b = 0
+
+            # Pulsing glow effect
+            pulse = 0.8 + 0.2 * math.sin(now_ms / 200.0)
+            alpha = int(100 * frac * pulse)
+
+            # Draw radial glow that will show through fog
+            glow_surf = pygame.Surface((glow_radius * 2, glow_radius * 2), pygame.SRCALPHA)
+            center = glow_radius
+            for radius in range(glow_radius, 0, -2):
+                ring_alpha = int(alpha * (1.0 - radius / glow_radius))
+                if ring_alpha > 0:
+                    pygame.draw.circle(glow_surf, (r, g, b, ring_alpha), (center, center), radius)
+            surface.blit(glow_surf, (int(sx) - glow_radius, int(sy) - glow_radius))
+
     def draw_pings(self, surface: pygame.Surface) -> None:
         """Draw navigator pings with ripple animation, color urgency shift, and distance cue."""
         now_ms = pygame.time.get_ticks()
@@ -740,13 +805,16 @@ class Game:
             dist_scale = min(1.0, world_dist / 600.0)
             max_ripple_r = int(18 + 22 * dist_scale)
 
+            # Pulsing effect
+            pulse = 0.9 + 0.1 * math.sin(now_ms / 150.0)
+
             # Ripple rings: 3 rings with phase offset
             alpha_base = int(max(40, 200 * frac))
             for ring in range(3):
                 phase_offset = ring * 400  # ms offset per ring
                 ring_t = ((now_ms + phase_offset) % 1200) / 1200.0  # 0→1 over 1.2s
                 ring_r = int(8 + (max_ripple_r - 8) * ring_t)
-                ring_alpha = int(alpha_base * (1.0 - ring_t) * 0.8)
+                ring_alpha = int(alpha_base * (1.0 - ring_t) * 0.8 * pulse)
                 if ring_r < 2 or ring_alpha < 5:
                     continue
                 size = ring_r * 2 + 4
@@ -756,7 +824,7 @@ class Game:
                 surface.blit(tmp, (int(sx) - mid, int(sy) - mid))
 
             # Static center dot + cross-arms (always visible)
-            core_alpha = int(max(80, 220 * frac))
+            core_alpha = int(max(80, 220 * frac * pulse))
             core_size = 32
             core_mid = 16
             core = pygame.Surface((core_size, core_size), pygame.SRCALPHA)
@@ -862,9 +930,9 @@ class Game:
         cy = SCREEN_H // 2 - 80
         if self.mode == 3:
             if self.winner == "host":
-                txt, color = "HOST WINS!", CAR_COLOR_HOST
+                txt, color = f"{self._host_room_name.upper()} WINS!", CAR_COLOR_HOST
             elif self.winner == "client":
-                txt, color = "CLIENT WINS!", CAR_COLOR_CLIENT
+                txt, color = f"{self._client_room_name.upper()} WINS!", CAR_COLOR_CLIENT
             else:
                 txt, color = "OUT OF FUEL!", ORANGE
         else:
@@ -935,10 +1003,10 @@ class Game:
             y0 += bh + gap
 
     def draw(self) -> None:
-        self.screen = pygame.display.get_surface() or self.screen
         self.draw_world(self.screen)
         if self.mode == 2:
             csx, csy = self.camera.w2s(self.cars[0].state.x, self.cars[0].state.y)
+            self.draw_ping_glow_through_fog(self.screen)
             self.draw_fog(self.screen, (csx, csy))
             self.draw_pings(self.screen)
         self.draw_hud(self.screen)

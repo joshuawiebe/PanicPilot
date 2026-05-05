@@ -55,8 +55,19 @@ C_ERROR        = (220, 60, 60)
 
 
 def _set_display_mode(fullscreen: bool) -> pygame.Surface:
-    flags = pygame.SCALED | (pygame.FULLSCREEN if fullscreen else 0)
-    return pygame.display.set_mode((SCREEN_W, SCREEN_H), flags)
+    import settings as _s
+    if fullscreen:
+        try:
+            info = pygame.display.Info()
+            w, h = info.current_w, info.current_h
+        except Exception:
+            w, h = 1920, 1080
+        flags = pygame.FULLSCREEN
+    else:
+        w = getattr(_s, "DISPLAY_W", 1920)
+        h = getattr(_s, "DISPLAY_H", 1080)
+        flags = pygame.RESIZABLE
+    return pygame.display.set_mode((w, h), flags)
 
 
 def _handle_global_key(event: "pygame.event.Event") -> bool:
@@ -65,8 +76,13 @@ def _handle_global_key(event: "pygame.event.Event") -> bool:
     if event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
         import settings as _s
         _s.FULLSCREEN = not _s.FULLSCREEN
-        _set_display_mode(_s.FULLSCREEN)
+        screen = _set_display_mode(_s.FULLSCREEN)
         _s.save_settings()
+        try:
+            caption = pygame.display.get_caption()[0]
+        except Exception:
+            caption = "Panic Pilot"
+        pygame.display.set_caption(caption)
         return True
     return False
 
@@ -222,12 +238,15 @@ class Slider:
 
 
 class TextInput:
-    def __init__(self, cx: int, cy: int, placeholder: str = "") -> None:
+    def __init__(self, cx: int, cy: int, placeholder: str = "",
+                 allowed_chars: str = "0123456789.", max_len: int = 15) -> None:
         self.rect        = pygame.Rect(cx - 180, cy - 26, 360, 52)
         self.text        = ""
         self.placeholder = placeholder
         self.active      = False
-        self.error       = ""   # Phase 11.1: Fehlernachricht
+        self.error       = ""
+        self.allowed_chars = allowed_chars
+        self.max_len     = max_len
         self._font    = pygame.font.SysFont("Courier", 20, bold=True)
         self._ph_font = pygame.font.SysFont("Arial",   17)
         self._err_f   = pygame.font.SysFont("Arial",   14)
@@ -324,28 +343,23 @@ class TextInput:
         if event.type == pygame.MOUSEBUTTONDOWN:
             self.active = self.rect.collidepoint(event.pos)
         elif event.type == pygame.KEYDOWN and self.active:
-            # Phase 12.1: Copy/Paste support (CTRL+C / CTRL+V)
             cmd_mask = getattr(pygame, "KMOD_CMD", 0)
             if event.key == pygame.K_c and (event.mod & pygame.KMOD_CTRL or event.mod & cmd_mask):
-                # Copy current text
                 self._set_clipboard(self.text)
             elif event.key == pygame.K_v and (event.mod & pygame.KMOD_CTRL or event.mod & cmd_mask):
-                # Paste from clipboard
                 clipboard = self._get_clipboard()
-                # Filter: only keep valid IP characters (0-9, .)
-                filtered = "".join(c for c in clipboard if c in "0123456789.")
-                available = 15 - len(self.text)
+                filtered = "".join(c for c in clipboard if c in self.allowed_chars)
+                available = self.max_len - len(self.text)
                 self.text += filtered[:available]
                 self.error = ""
             elif event.key == pygame.K_a and (event.mod & pygame.KMOD_CTRL or event.mod & cmd_mask):
-                # Select all (mark but don't implement special visual, just usage)
                 pass
             elif event.key == pygame.K_BACKSPACE:
                 self.text = self.text[:-1]
                 self.error = ""
             elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                 self.active = False
-            elif len(self.text) < 15 and event.unicode in "0123456789.":
+            elif len(self.text) < self.max_len and event.unicode in self.allowed_chars:
                 self.text  += event.unicode
                 self.error  = ""
 
@@ -864,8 +878,12 @@ class HostLobby:
         except OSError:
             own_ip = "localhost"
         
+        import settings as _s
+        username = getattr(_s, "USERNAME", "").strip()
         if room_name and room_name.strip():
             self._room_name = room_name.strip()
+        elif username:
+            self._room_name = f"{username}'s Room"
         else:
             self._room_name = f"Host ({own_ip})"
         self._broadcaster = RoomBroadcaster(self._room_name, tcp_port=self.NET_PORT)
@@ -881,6 +899,7 @@ class HostLobby:
         # Phase 11.2: Picker immer zentriert; pvp_mode steuert nur Marker-Anzeige
         self._picker = ClassPicker(cx, SCREEN_H // 2 - 30, pvp_mode=pvp)
         self._client_class: str | None = None
+        self._client_room_name: str = "Client"
         self._client_handshaked = False
         self._lobby_timer = 999.0
 
@@ -925,10 +944,12 @@ class HostLobby:
             cl = self._net.get_client_lobby()
             if cl:
                 self._client_class      = cl.get("car_class", "balanced")
+                self._client_room_name  = cl.get("client_name", "Client")
                 self._client_handshaked = True   # erster Datenaustausch bestätigt
 
             if self._net.client_left():
                 self._client_class      = None
+                self._client_room_name  = "Client"
                 self._client_handshaked = False
 
             # ── Phase 11.1: Sofort-Antwort auf request_lobby_state ───────────
@@ -1010,13 +1031,21 @@ class HostLobby:
         self._net.reset_lobby_flags()
 
         # ── Spiel starten ─────────────────────────────────────────────────────
+        import settings as _s
+        host_username = getattr(_s, "USERNAME", "").strip() or "Host"
+        client_username = getattr(self, "_client_room_name", "Client")
+        if not getattr(self, "_client_room_name", None):
+            client_username = "Client"
         game = HostGame(
+            screen           = self.screen,
             mode             = self.mode,
             track_length     = self.length,
             speed_scale      = self.speed_scale,
             net              = self._net,
             car_class_host   = self._picker.selected,
             car_class_client = client_cls,
+            host_room_name   = getattr(self, "_room_name", host_username),
+            client_room_name = client_username,
         )
         game._generated_track = generated
         game._init_game_objects(track=generated)
@@ -1191,7 +1220,9 @@ class ClientLobby:
             # aber erst hier sendet der Client auch seine Klasse)
             if not self._initial_sent:
                 self._initial_sent = True
-                self._net.send_lobby({"car_class": self._picker.selected})
+                import settings as _s
+                client_name = getattr(_s, "USERNAME", "").strip() or "Client"
+                self._net.send_lobby({"car_class": self._picker.selected, "client_name": client_name})
 
             # Host-Lobby-Info empfangen
             hl = self._net.get_host_lobby()
@@ -1233,7 +1264,9 @@ class ClientLobby:
             self._lobby_timer += dt
             if self._lobby_timer >= 1.0 / self.LOBBY_SEND_HZ:
                 self._lobby_timer = 0.0
-                self._net.send_lobby({"car_class": self._picker.selected})
+                import settings as _s
+                client_name = getattr(_s, "USERNAME", "").strip() or "Client"
+                self._net.send_lobby({"car_class": self._picker.selected, "client_name": client_name})
 
             self._draw_lobby(mouse)
 
@@ -1246,11 +1279,16 @@ class ClientLobby:
         """
         from client import ClientGame
         print("DEBUG: ClientLobby creating ClientGame …")
+        host_room = self._host_info.get("room_name", "Host")
+        import settings as _s
+        client_username = getattr(_s, "USERNAME", "").strip() or "Client"
         game = ClientGame(
             host_ip          = self.host_ip,
             net              = self._net,
             car_class_host   = start_data.get("host_class",   "balanced"),
             car_class_client = self._picker.selected,
+            host_room_name   = host_room,
+            client_room_name = client_username,
         )
         # Phase 11.3: Signalisiert _connect_loop dass ready_for_map schon gesendet
         game._lobby_ready_sent = True
@@ -1400,22 +1438,43 @@ class SettingsScene:
         import settings as _s
         init_music = getattr(_s, "MUSIC_VOLUME", 70)
         init_sfx   = getattr(_s, "SFX_VOLUME",   80)
+        init_username = getattr(_s, "USERNAME", "")
 
-        self._sl_music = Slider(cx, SCREEN_H // 2 - 56,
+        try:
+            display_info = pygame.display.Info()
+            self._native_w = display_info.current_w
+            self._native_h = display_info.current_h
+        except Exception:
+            self._native_w = 1920
+            self._native_h = 1080
+
+        _s.DISPLAY_W = self._native_w
+        _s.DISPLAY_H = self._native_h
+
+        self._sl_music = Slider(cx, SCREEN_H // 2 - 106,
                                 "♪  Music Volume", 0, 100, init_music)
-        self._sl_sfx   = Slider(cx, SCREEN_H // 2 + 24,
+        self._sl_sfx   = Slider(cx, SCREEN_H // 2 - 26,
                                 "★  Effects Volume", 0, 100, init_sfx)
 
-        self._btn_test  = Button(cx, SCREEN_H // 2 + 110,
+        import string
+        self._inp_username = TextInput(cx, SCREEN_H // 2 + 54, "Your Name (shown to other players)",
+                                       allowed_chars=string.printable.replace('\n', '').replace('\r', ''),
+                                       max_len=20)
+        self._inp_username.text = init_username
+
+        self._btn_test  = Button(cx, SCREEN_H // 2 + 114,
                                  "  Play Test Sound  ", w=280, h=46,
                                  accent=(0, 195, 100))
-        self._btn_fullscreen = Button(cx, SCREEN_H // 2 + 168,
-                                     "  Fullscreen: OFF  ", w=280, h=46,
-                                     accent=(60, 100, 180))
+        self._btn_fullscreen = Button(cx, SCREEN_H // 2 + 172,
+                                      "  Fullscreen: OFF  ", w=280, h=46,
+                                      accent=(60, 100, 180))
         self._btn_back  = Button(cx, SCREEN_H // 2 + 232,
                                  "  Back  ", w=200, h=44)
         self._test_hint = ""
         self._test_t    = 0.0
+
+        fs = getattr(_s, "FULLSCREEN", False)
+        self._btn_fullscreen.label = "  Fullscreen: ON   " if fs else "  Fullscreen: OFF  "
 
     # ── Lautstärken live an SoundManager weitergeben ─────────────────────────
 
@@ -1453,10 +1512,14 @@ class SettingsScene:
                 if _handle_global_key(event):                 continue
                 if event.type == pygame.QUIT:
                     return
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    return
                 self._sl_music.handle_event(event)
                 self._sl_sfx.handle_event(event)
+                self._inp_username.handle_event(event)
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    if self._inp_username.active:
+                        self._inp_username.active = False
+                    else:
+                        return
                 # Volumes live anwenden beim Ziehen
                 if event.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP):
                     self._apply_volumes()
@@ -1470,6 +1533,9 @@ class SettingsScene:
                     self._toggle_fullscreen()
                 if self._btn_back.is_clicked(event):
                     self._apply_volumes()
+                    import settings as _s
+                    _s.USERNAME = self._inp_username.text.strip()
+                    _s.save_settings()
                     return
 
             self._draw(mouse)
@@ -1491,6 +1557,7 @@ class SettingsScene:
 
         self._sl_music.draw(self.screen)
         self._sl_sfx.draw(self.screen)
+        self._inp_username.draw(self.screen)
 
         # Sound-Quelle-Hinweis
         if _sound_mod is not None:
@@ -1501,10 +1568,10 @@ class SettingsScene:
             src_col = (200, 70, 50)
         src = self._hint_f.render(src_txt, True, src_col)
         self.screen.blit(src, ((SCREEN_W - src.get_width()) // 2,
-                                SCREEN_H // 2 + 68))
+                                SCREEN_H // 2 + 72))
 
-        self._btn_test.draw(self.screen, mouse)
         import settings as _s
+        self._btn_test.draw(self.screen, mouse)
         self._btn_fullscreen.label = ("  Fullscreen: ON   " if getattr(_s, "FULLSCREEN", False)
                                       else "  Fullscreen: OFF  ")
         self._btn_fullscreen.draw(self.screen, mouse)
@@ -1610,8 +1677,10 @@ def main() -> None:
                                  "room_name": last_host_settings.get("room_name", "")})
                     if result2 is None:
                         continue
-                    mode, length, speed_scale = result2
-                    last_host_settings = {"mode": mode, "length": length}
+                    mode, length, speed_scale, room_name = result2[:4]
+                    last_host_settings = {"mode": mode, "length": length,
+                                          "speed_idx": last_host_settings.get("speed_idx", 1),
+                                          "room_name": room_name}
                     continue
 
                 existing_net = None
