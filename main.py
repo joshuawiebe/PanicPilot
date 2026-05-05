@@ -1558,7 +1558,81 @@ class SettingsScene:
 
 
 class _FirstStartSetup:
-    """Shown only on first launch when no username is set."""
+    """Multi-slide tutorial shown on first launch."""
+
+    SLIDES = [
+        {
+            "title": "WELCOME TO PANIC PILOT",
+            "icon": "racing",
+            "lines": [
+                "Panic Pilot is an asymmetric co-op racing game where two",
+                "players share one car on a dangerous track.",
+                "",
+                "One player drives, the other navigates. Communication is key.",
+            ],
+        },
+        {
+            "title": "CONTROLS  -  DRIVER",
+            "icon": "driver",
+            "lines": [
+                "The Driver (Player 1) steers the car.",
+                "",
+                "  A / D         \u2013  Steer left / right",
+                "  W / S         \u2013  Accelerate / Brake",
+                "  M             \u2013  Toggle mirror view",
+                "  R             \u2013  Reset car on track",
+            ],
+        },
+        {
+            "title": "CONTROLS  -  NAVIGATOR",
+            "icon": "navigator",
+            "lines": [
+                "The Navigator (Player 2) sees the full map but NOT the car.",
+                "They guide the driver by placing ping markers.",
+                "",
+                "  Mouse click   \u2013  Place ping marker on map",
+                "  O / P         \u2013  Zoom in / out (fog mode)",
+                "  I             \u2013  Use inventory item",
+            ],
+        },
+        {
+            "title": "GAME MODES",
+            "icon": "modes",
+            "lines": [
+                "  Split Control   \u2013  Both players control one car together",
+                "",
+                "  Panic Pilot     \u2013  Fog covers the driver; navigator has",
+                "                    the full map and uses pings to guide",
+                "",
+                "  PvP Racing      \u2013  Two cars race head-to-head; collect",
+                "                    items and use them against your opponent",
+            ],
+        },
+        {
+            "title": "FUEL & ITEMS",
+            "icon": "fuel",
+            "lines": [
+                "Your car burns fuel constantly. Collect yellow canisters",
+                "on the track to refuel, or you will be eliminated!",
+                "",
+                "  Boost pads     \u2013  Speed boost when driven over",
+                "  Oil slicks     \u2013  Drop behind you to spin out pursuers",
+                "  Item boxes     \u2013  Random power-up (PvP mode)",
+            ],
+        },
+        {
+            "title": "MULTIPLAYER (LAN)",
+            "icon": "multiplayer",
+            "lines": [
+                "Play with a friend over your local network.",
+                "",
+                "  Host            \u2013  Opens a room and waits for connection",
+                "  Connect Client  \u2013  Enter the host's IP address to join",
+                "",
+                "Both players must agree on the game mode and settings.",
+            ],
+        },
+    ]
 
     def __init__(self, screen: pygame.Surface) -> None:
         self.screen = screen
@@ -1567,12 +1641,16 @@ class _FirstStartSetup:
         self._title_f = pygame.font.SysFont("Arial", 42, bold=True)
         self._sub_f = pygame.font.SysFont("Arial", 18)
         self._hint_f = pygame.font.SysFont("Arial", 14)
+        self._key_f = pygame.font.SysFont("Courier", 15, bold=True)
 
-        self._inp = TextInput(cx, SCREEN_H // 2 - 20, "Enter your display name")
+        self._slide = 0
+        self._inp = TextInput(cx, SCREEN_H // 2 + 40, "Enter your display name")
         self._inp.active = True
 
-        self._btn_ok = Button(cx, SCREEN_H // 2 + 60, "  CONTINUE  ",
-                              accent=ACCENT)
+        self._btn_next = Button(SCREEN_W // 2 + 100, SCREEN_H - 100,
+                                "  NEXT  \u25B6  ", w=160, h=46, accent=ACCENT)
+        self._btn_skip = Button(SCREEN_W // 2 - 100, SCREEN_H - 100,
+                                "  SKIP  ", w=160, h=46)
 
     def run(self) -> None:
         import settings as _s
@@ -1587,27 +1665,74 @@ class _FirstStartSetup:
                     pygame.quit()
                     raise SystemExit
                 self._inp.handle_event(event)
-                if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                    if self._inp.text.strip():
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RIGHT or event.key == pygame.K_RETURN:
+                        if self._slide < len(self.SLIDES):
+                            self._slide += 1
+                        elif self._inp.text.strip():
+                            _s.USERNAME = self._inp.text.strip()
+                            _s.save_settings()
+                            return
+                    elif event.key == pygame.K_LEFT:
+                        if self._slide > 0:
+                            self._slide -= 1
+                if self._btn_next.is_clicked(event):
+                    if self._slide < len(self.SLIDES):
+                        self._slide += 1
+                    elif self._inp.text.strip():
                         _s.USERNAME = self._inp.text.strip()
                         _s.save_settings()
                         return
-                if self._btn_ok.is_clicked(event):
-                    if self._inp.text.strip():
-                        _s.USERNAME = self._inp.text.strip()
-                        _s.save_settings()
-                        return
+                if self._btn_skip.is_clicked(event):
+                    if self._slide > 0:
+                        self._slide -= 1
 
             self.screen.fill(MENU_BG)
             _draw_bg(self.screen, self._t)
-            _draw_title(self.screen, "WELCOME TO PANIC PILOT", 80, self._title_f, ACCENT2)
-            sub = self._sub_f.render("Choose a name to show other players", True, C_LABEL)
-            self.screen.blit(sub, ((SCREEN_W - sub.get_width()) // 2, SCREEN_H // 2 - 80))
-            self._inp.draw(self.screen)
-            self._btn_ok.draw(self.screen, mouse)
-            h = self._hint_f.render("You can change this anytime in Settings", True, (60, 80, 110))
-            self.screen.blit(h, ((SCREEN_W - h.get_width()) // 2, SCREEN_H // 2 + 120))
+            self._draw_slide(mouse)
             pygame.display.flip()
+
+    def _draw_slide(self, mouse: tuple) -> None:
+        cx = SCREEN_W // 2
+        if self._slide < len(self.SLIDES):
+            slide = self.SLIDES[self._slide]
+            _draw_title(self.screen, slide["title"], 60, self._title_f, ACCENT2)
+            y = 140
+            for line in slide["lines"]:
+                if line.startswith("  "):
+                    txt = line.strip()
+                    col = (100, 180, 255) if "\u2013" in txt else (255, 220, 0)
+                    lbl = self._hint_f.render(txt, True, col)
+                elif line:
+                    lbl = self._sub_f.render(line, True, C_LABEL)
+                else:
+                    y += 12
+                    continue
+                self.screen.blit(lbl, ((SCREEN_W - lbl.get_width()) // 2, y))
+                y += 26
+        else:
+            _draw_title(self.screen, "YOU'RE ALL SET!", 60, self._title_f, GREEN)
+            sub = self._sub_f.render("Choose a name to show other players", True, C_LABEL)
+            self.screen.blit(sub, ((SCREEN_W - sub.get_width()) // 2, 120))
+            self._inp.draw(self.screen)
+
+        # Slide dots
+        total = len(self.SLIDES) + 1
+        dot_r, dot_gap = 5, 16
+        dx = cx - (total - 1) * dot_gap // 2
+        for i in range(total):
+            color = ACCENT if i == self._slide else (60, 70, 100)
+            pygame.draw.circle(self.screen, color, (dx + i * dot_gap, SCREEN_H - 60), dot_r)
+
+        self._btn_next.draw(self.screen, mouse)
+        if self._slide >= len(self.SLIDES):
+            self._btn_next.label = "  START  \u25B6  "
+        if self._slide > 0:
+            self._btn_skip.draw(self.screen, mouse)
+            back_lbl = self._hint_f.render("\u25C0  Back", True, (100, 110, 130))
+            self.screen.blit(back_lbl,
+                             (self._btn_skip.rect.centerx - back_lbl.get_width() // 2,
+                              self._btn_skip.rect.centery - back_lbl.get_height() // 2))
 
 
 # ── Entry Point ────────────────────────────────────────────────────────────────
