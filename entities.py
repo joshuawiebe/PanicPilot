@@ -252,11 +252,10 @@ class BoostPad:
                      (sx - rotated.get_width()//2, sy - rotated.get_height()//2))
 
         if zoom >= 0.45:
-            if self._font is None:
-                self._font = pygame.font.SysFont("Arial", 13, bold=True)
-            lbl = self._font.render("▶▶", True, (255, 255, 80))
-            rl  = pygame.transform.rotate(lbl, -self.angle)
-            surface.blit(rl, (sx - rl.get_width()//2, sy - rl.get_height()//2))
+            # Draw arrow indicator for boost pad
+            cx, cy = int(sx), int(sy)
+            boost_pts = [(cx - 6, cy - 5), (cx + 7, cy), (cx - 6, cy + 5)]
+            pygame.draw.polygon(surface, (255, 255, 80), boost_pts, 2)
 
     def _draw_faded(self, surface, sx, sy, r, zoom):
         tmp = pygame.Surface((r*2+4, r*2+4), pygame.SRCALPHA)
@@ -341,7 +340,7 @@ class OilSlick:
         }
 
     def apply_net_dict(self, d: dict) -> None:
-        # Position nur übernehmen wenn explizit gesendet (dynamisch abgelegte Ölflecken)
+        # Only apply position if explicitly sent (dynamically placed oil slicks)
         if "x" in d: self.x = float(d["x"])
         if "y" in d: self.y = float(d["y"])
         self.active         = bool(d.get("active", True))

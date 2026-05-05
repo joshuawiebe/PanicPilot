@@ -79,7 +79,6 @@ CLASS_COLORS = {
     "speedster": (255, 140,   0),
     "tank":      ( 50, 175,  55),
 }
-CLASS_ICONS = {"balanced": "◈", "speedster": "▶▶", "tank": "⬡"}
 
 
 def _draw_class_icon(surface: pygame.Surface, cls: str, rect: pygame.Rect, color: tuple) -> None:
@@ -106,8 +105,8 @@ def _draw_class_icon(surface: pygame.Surface, cls: str, rect: pygame.Rect, color
     else:
         pygame.draw.circle(surface, color, (cx, cy), 8, 2)
 CLASS_DESCRIPTIONS = {
-    "balanced":  "All-around",
-    "speedster": "Fast but slippery",
+    "balanced":  "Good grip, normal speed",
+    "speedster": "High speed, slippery",
     "tank":      "Slow but sturdy",
 }
 
@@ -485,7 +484,7 @@ class ClassPicker:
 
     def _draw_coop_info(self, surface: pygame.Surface) -> None:
         y = self.cy + self.TILE_H // 2 + 14
-        text = "Co-op Mode  –  Client controls throttle & steering of the same car"
+        text = "Co-op Mode  -  Client controls throttle & steering of the same car"
         lbl  = self._fc.render(text, True, (70, 110, 150))
         surface.blit(lbl, ((SCREEN_W - lbl.get_width()) // 2, y))
 
@@ -502,7 +501,7 @@ class MainMenu:
         self._btn_host     = Button(cx, y0,                       "  START HOST  ",    accent=ACCENT2)
         self._btn_solo     = Button(cx, y0 +   BTN_H + BTN_GAP,   "  SOLO PLAY  ",    accent=GREEN)
         self._btn_client   = Button(cx, y0 + 2*(BTN_H+BTN_GAP),   "  CONNECT CLIENT  ")
-        self._btn_settings = Button(cx, y0 + 3*(BTN_H+BTN_GAP),   "  ♪  SETTINGS  ",
+        self._btn_settings = Button(cx, y0 + 3*(BTN_H+BTN_GAP),   "  SETTINGS  ",
                                     w=BTN_W, h=46, accent=(0, 180, 180))
         self._btn_quit     = Button(cx, y0 + 3*(BTN_H+BTN_GAP) + 62,
                                     "  EXIT  ", w=200, h=46, accent=(160, 40, 40))
@@ -794,7 +793,7 @@ class ClientSetupMenu:
         self._discovered_rects.clear()
         
         cx = SCREEN_W // 2
-        y = 100
+        y = 130
         
         # Draw recent connections
         recent = self._history.get_recent(limit=3)
@@ -808,7 +807,6 @@ class ClientSetupMenu:
                 ip = conn["ip"]
                 username = conn.get("username", ip)
                 
-                # Draw as small button
                 rect = pygame.Rect(cx - 160, y, 320, 32)
                 hovered = rect.collidepoint(mouse)
                 
@@ -818,7 +816,7 @@ class ClientSetupMenu:
                 pygame.draw.rect(self.screen, bg, rect, border_radius=6)
                 pygame.draw.rect(self.screen, border, rect, 1, border_radius=6)
                 
-                text = self._small_f.render(f"🌐 {username} ({ip})", True, 
+                text = self._small_f.render(f"[*]  {username}  ({ip})", True,
                                            ACCENT if hovered else C_LABEL)
                 self.screen.blit(text, (rect.x + 12, rect.centery - text.get_height() // 2))
                 
@@ -1125,11 +1123,11 @@ class HostLobby:
 
         # Status line – distinguishes TCP-open vs. fully handshaked
         if self._client_handshaked:
-            st, sc = "● NAVIGATOR CONNECTED & READY", (50, 210, 100)
+            st, sc = "[OK] NAVIGATOR CONNECTED & READY", (50, 210, 100)
         elif self._net.is_connected():
-            st, sc = "◌ TCP connected – waiting for handshake …", (180, 180, 60)
+            st, sc = "[..] TCP connected - waiting for handshake ...", (180, 180, 60)
         else:
-            st, sc = f"○ Waiting for navigator …   Port {self.NET_PORT}", ORANGE
+            st, sc = f"[--] Waiting for navigator ...   Port {self.NET_PORT}", ORANGE
         status = self._status_f.render(st, True, sc)
         self.screen.blit(status, ((SCREEN_W - status.get_width()) // 2,
                                    SCREEN_H // 2 + 92))
@@ -1143,7 +1141,7 @@ class HostLobby:
 
         for i, h in enumerate([
             "Choose class → START RACE",
-            "ESC = Main Menu   •   Settings keeps connection alive",
+             "ESC = Main Menu  |  Settings keeps connection alive",
         ]):
             hl = self._hint_f.render(h, True, (60, 80, 110))
             self.screen.blit(hl, ((SCREEN_W - hl.get_width()) // 2,
@@ -1349,7 +1347,7 @@ class ClientLobby:
         modes_lbl  = {1: "Split Control", 2: "Panic Pilot", 3: "PvP Racing"}
         speed_lbl  = {0.70: "Slow", 1.00: "Normal", 1.40: "Fast"}
         # Find closest match for speed_scale
-        spd_text = "–"
+        spd_text = "-"
         if speed_raw is not None:
             key = min(speed_lbl.keys(), key=lambda k: abs(k - float(speed_raw)))
             spd_text = speed_lbl.get(key, f"{speed_raw:.1f}x")
@@ -1361,7 +1359,7 @@ class ClientLobby:
             if length_raw is not None:
                 info_parts.append(f"Track: {length_raw} Tiles")
             info_parts.append(f"Speed: {spd_text}")
-            info_str = "   •   ".join(info_parts)
+            info_str = "  |  ".join(info_parts)
             info_col = ACCENT2
         else:
             info_str = "Waiting for host data …"
@@ -1381,18 +1379,18 @@ class ClientLobby:
         # ── Connection Status ────────────────────────────────────────────────
         since = self._t - self._last_update
         if not handshaked:
-            st, sc = "◌ Handshake in progress – waiting for host data …", (180, 180, 60)
+            st, sc = "[..] Handshake in progress - waiting for host data ...", (180, 180, 60)
         elif since > 3.0:
-            st, sc = "● Connected  –  Host is configuring settings …", (180, 180, 80)
+            st, sc = "[OK] Connected - Host is configuring settings ...", (180, 180, 80)
         else:
-            st, sc = f"● Connected to {self.host_ip}  –  Waiting for start …", (50, 210, 100)
+            st, sc = f"[OK] Connected to {self.host_ip} - Waiting for start ...", (50, 210, 100)
         status = self._status_f.render(st, True, sc)
         self.screen.blit(status, ((SCREEN_W - status.get_width()) // 2,
                                    SCREEN_H // 2 + 96))
 
         self._btn_back.draw(self.screen, mouse)
         h = self._hint_f.render(
-            "Choose class – host starts the race   •   ESC = Leave",
+            "Choose class - host starts the race  |  ESC = Leave",
             True, (60, 80, 110))
         self.screen.blit(h, ((SCREEN_W - h.get_width()) // 2, SCREEN_H - 34))
         pygame.display.flip()
@@ -1438,21 +1436,21 @@ class SettingsScene:
         init_sfx   = getattr(_s, "SFX_VOLUME",   80)
         init_username = getattr(_s, "USERNAME", "")
 
-        self._sl_music = Slider(cx, SCREEN_H // 2 - 106,
-                                "♪  Music Volume", 0, 100, init_music)
-        self._sl_sfx   = Slider(cx, SCREEN_H // 2 - 26,
-                                "★  Effects Volume", 0, 100, init_sfx)
+        self._sl_music = Slider(cx, SCREEN_H // 2 - 120,
+                                "Music Volume", 0, 100, init_music)
+        self._sl_sfx   = Slider(cx, SCREEN_H // 2 - 30,
+                                "Effects Volume", 0, 100, init_sfx)
 
         import string
-        self._inp_username = TextInput(cx, SCREEN_H // 2 + 54, "Your Name (shown to other players)",
+        self._inp_username = TextInput(cx, SCREEN_H // 2 + 64, "Your Name (shown to other players)",
                                        allowed_chars=string.printable.replace('\n', '').replace('\r', ''),
                                        max_len=20)
         self._inp_username.text = init_username
 
-        self._btn_test  = Button(cx, SCREEN_H // 2 + 114,
+        self._btn_test  = Button(cx, SCREEN_H // 2 + 130,
                                  "  Play Test Sound  ", w=280, h=46,
                                  accent=(0, 195, 100))
-        self._btn_back  = Button(cx, SCREEN_H // 2 + 172,
+        self._btn_back  = Button(cx, SCREEN_H // 2 + 188,
                                  "  Back  ", w=200, h=44)
         self._test_hint = ""
         self._test_t    = 0.0
@@ -1486,7 +1484,7 @@ class SettingsScene:
                     self._apply_volumes()
                     if _sound_mod:
                         _sound_mod.get().play_pickup_fuel()
-                    self._test_hint = "▶ Test sound ..."
+                    self._test_hint = "[>] Test sound ..."
                     self._test_t    = 1.2
                 if self._btn_back.is_clicked(event):
                     self._apply_volumes()
@@ -1526,14 +1524,14 @@ class SettingsScene:
 
         # Sound source hint
         if _sound_mod is not None:
-            src_txt = "✓ Audio system active (procedurally generated sounds)"
+            src_txt = "[OK] Audio system active (procedurally generated sounds)"
             src_col = (60, 200, 100)
         else:
-            src_txt = "✗ Audio system not available"
+            src_txt = "[--] Audio system not available"
             src_col = (200, 70, 50)
         src = self._hint_f.render(src_txt, True, src_col)
         self.screen.blit(src, ((SCREEN_W - src.get_width()) // 2,
-                                SCREEN_H // 2 + 72))
+                                SCREEN_H // 2 + 90))
 
         import settings as _s
         self._btn_test.draw(self.screen, mouse)
