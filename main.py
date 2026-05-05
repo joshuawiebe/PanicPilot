@@ -106,9 +106,9 @@ def _draw_class_icon(surface: pygame.Surface, cls: str, rect: pygame.Rect, color
     else:
         pygame.draw.circle(surface, color, (cx, cy), 8, 2)
 CLASS_DESCRIPTIONS = {
-    "balanced":  "Balanced  –  Good grip, normal speed",
-    "speedster": "Speedy  –  High speed, slippery & thirsty",
-    "tank":      "Tank  –  Slow but sturdy, off-road king",
+    "balanced":  "All-around",
+    "speedster": "Fast but slippery",
+    "tank":      "Slow but sturdy",
 }
 
 
@@ -1515,7 +1515,7 @@ class SettingsScene:
             "Changes are applied immediately", True, C_LABEL)
         self.screen.blit(info, ((SCREEN_W - info.get_width()) // 2, 126))
 
-        # Trennlinie
+        # Separator line
         pygame.draw.line(self.screen, (30, 50, 80),
                          (SCREEN_W // 2 - 260, 154),
                          (SCREEN_W // 2 + 260, 154), 1)

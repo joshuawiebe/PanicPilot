@@ -314,7 +314,7 @@ class HostGame(Game):
         self.screen.blit(lbl, (SCREEN_W - lbl.get_width() - 12, 12))
 
         # Mode top center
-        modes  = {1: "SPLIT CONTROL", 2: "⦿ PANIC PILOT", 3: "⚡ PvP RACING"}
+        modes  = {1: "SPLIT CONTROL", 2: "PANIC PILOT", 3: "PvP RACING"}
         colors = {1: GRAY, 2: CYAN, 3: YELLOW}
         m_lbl = self._mode_font.render(
             modes.get(self.mode, ""), True, colors.get(self.mode, WHITE))

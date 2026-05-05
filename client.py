@@ -811,7 +811,7 @@ class ClientGame:
     def _draw_status_overlay(self) -> None:
         status = self._status_font.render("CONNECTED", True, GREEN)
         self.screen.blit(status, (SCREEN_W - status.get_width() - 12, 12))
-        modes  = {1: "SPLIT CONTROL", 2: "⦿ NAVIGATOR", 3: "⚡ AUTO B (PvP)"}
+        modes  = {1: "SPLIT CONTROL", 2: "NAVIGATOR", 3: "AUTO B (PvP)"}
         colors = {1: GRAY, 2: CYAN, 3: YELLOW}
         m = self._mode_font.render(
             modes.get(self._mode, ""), True, colors.get(self._mode, WHITE))
