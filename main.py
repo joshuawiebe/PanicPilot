@@ -318,8 +318,9 @@ class Slider:
 
 class TextInput:
     def __init__(self, cx: int, cy: int, placeholder: str = "",
-                 allowed_chars: str = "0123456789.", max_len: int = 15) -> None:
-        self.rect        = pygame.Rect(cx - 180, cy - 26, 360, 52)
+                 allowed_chars: str = "0123456789.", max_len: int = 15,
+                 width: int = 340) -> None:
+        self.rect        = pygame.Rect(cx - width // 2, cy - 26, width, 52)
         self.text        = ""
         self.placeholder = placeholder
         self.active      = False
@@ -774,13 +775,15 @@ class HostSetupMenu:
             self.screen.blit(room_display,
                              ((SCREEN_W - room_display.get_width()) // 2, 120))
             ip_hint = self._ip_lbl.render("Your IP (for the client):", True, C_LABEL)
-            ip_val  = self._ip_font.render(f"  {self._own_ip}:54321  ", True, ACCENT)
-            box = ip_val.get_rect(center=(SCREEN_W // 2, 180))
-            _shadow_rect(self.screen, box.inflate(22, 12), radius=8)
-            pygame.draw.rect(self.screen, (10, 20, 45), box.inflate(22, 12), border_radius=8)
-            pygame.draw.rect(self.screen, C_BTN_BORDER, box.inflate(22, 12), 2, border_radius=8)
-            self.screen.blit(ip_hint, ((SCREEN_W - ip_hint.get_width()) // 2, 148))
-            self.screen.blit(ip_val, box)
+            ip_val  = self._ip_font.render(f"{self._own_ip}:54321", True, ACCENT)
+            box_w = 340
+            box = pygame.Rect((SCREEN_W - box_w) // 2, 156, box_w, 48)
+            _shadow_rect(self.screen, box, radius=8)
+            pygame.draw.rect(self.screen, (10, 20, 45), box, border_radius=8)
+            pygame.draw.rect(self.screen, C_BTN_BORDER, box, 2, border_radius=8)
+            self.screen.blit(ip_hint, ((SCREEN_W - ip_hint.get_width()) // 2, 138))
+            self.screen.blit(ip_val, (box.x + (box_w - ip_val.get_width()) // 2,
+                                      box.y + (box.h - ip_val.get_height()) // 2))
             self._slider.draw(self.screen)
             self._mode_flash = max(0.0, self._mode_flash - dt)
             cur_mode = self._modes[self._mode_idx]
@@ -905,7 +908,7 @@ class ClientSetupMenu:
             h = self._hint.render(
                 "Host IP is shown in the host's window title | CTRL+V to paste", 
                 True, C_LABEL)
-            self.screen.blit(h, ((SCREEN_W - h.get_width()) // 2, SCREEN_H // 2 + 86))
+            self.screen.blit(h, ((SCREEN_W - h.get_width()) // 2, SCREEN_H // 2 + 68))
             
             self._btn_connect.draw(self.screen, mouse)
             self._btn_back.draw(self.screen, mouse)
@@ -1572,7 +1575,8 @@ class ClientLobby:
         title_f = pygame.font.SysFont("Arial", 22, bold=True)
         lbl_f = pygame.font.SysFont("Arial", 16)
         inp = TextInput(cx, py + 100, "Enter code shown on host screen",
-                        allowed_chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", max_len=8)
+                        allowed_chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", max_len=8,
+                        width=300)
         inp.active = True
 
         btn_ok = Button(cx - 80, py + 170, "  JOIN  ", w=140, h=42, accent=ACCENT)
