@@ -742,7 +742,12 @@ class ClientGame:
         py = SCREEN_H // 2 + 60
         panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
         panel.fill((20, 20, 40, 220))
-        pygame.draw.rect(panel, ORANGE, (0, 0, panel_w, panel_h), 2, border_radius=8)
+        
+        # Pulsing border effect based on timer
+        pulse = abs(math.sin(self._mode_request_timer * 4))
+        border_width = int(2 + pulse * 4)
+        border_color = tuple(int(c + pulse * 100) for c in ORANGE)
+        pygame.draw.rect(panel, border_color, (0, 0, panel_w, panel_h), border_width, border_radius=8)
         self.screen.blit(panel, (px, py))
 
         f_big = pygame.font.SysFont("Arial", 22, bold=True)
@@ -751,7 +756,7 @@ class ClientGame:
             sub_txt = f"[Y] Accept   [N] Decline   (auto-decline in {secs_left}s)"
         else:
             sub_txt = f"[Y] Accept (restarts race)   [N] Decline   ({secs_left}s)"
-        title = f_big.render(f"Host wants to switch to {mode_name}", True, ORANGE)
+        title = f_big.render(f"Host wants to switch to {mode_name}", True, border_color)
         sub   = f_sm.render(sub_txt, True, WHITE)
         self.screen.blit(title, (px + (panel_w - title.get_width()) // 2, py + 16))
         self.screen.blit(sub,   (px + (panel_w - sub.get_width())   // 2, py + 54))
