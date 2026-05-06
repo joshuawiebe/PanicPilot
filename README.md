@@ -180,4 +180,14 @@ python main.py
 - First-start wizard introduces controls, game modes, and mechanics on initial launch
 - Vehicle selection features smooth hover animations with scale-up effects
 - In-game settings changes require peer confirmation before applying
+- Atmospheric fog grain overlay in Panic Pilot mode for enhanced tension
+- Dynamic camera zoom that adjusts to vehicle speed for better forward visibility
+- Screen shake on wall collisions with intensity based on impact speed
+- Item pickup screen flash with color coding per item type
+- Smooth fade transitions between menu scenes
+- Engine sound pitch variation by surface type (grass=lower, asphalt=normal)
+- Audio fade transitions for pause/resume states
+- Chat send/receive notification sounds
+- Animated loading bar during track data transfer
+- Adaptive finish line text scaling for narrow tiles
 - All UI icons are drawn with geometric pygame primitives (no emoji or external assets)
