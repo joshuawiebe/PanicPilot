@@ -959,7 +959,6 @@ class ClientSetupMenu:
             for room in self._discovered_rooms[:3]:  # Show max 3
                 ip = room["ip"]
                 room_name = room.get("room_name", "Unknown Room")
-                verify_code = room.get("verify_code", "")
                 
                 # Draw as small button
                 rect = pygame.Rect(cx - 160, y, 320, 32)
@@ -975,12 +974,6 @@ class ClientSetupMenu:
                                            ACCENT2 if hovered else C_LABEL)
                 self.screen.blit(text, (rect.x + 12, rect.centery - text.get_height() // 2))
                 
-                if verify_code:
-                    code_txt = self._small_f.render(f"[{verify_code}]", True,
-                                                   ACCENT2 if hovered else (180, 160, 60))
-                    self.screen.blit(code_txt, (rect.x + rect.w - code_txt.get_width() - 12,
-                                                rect.centery - code_txt.get_height() // 2))
-                
                 self._discovered_rects.append((rect, ip))
                 y += 36
 
@@ -988,28 +981,38 @@ class ClientSetupMenu:
 # ── Chat Panel ────────────────────────────────────────────────────────
 
 class ChatPanel:
-    """Right-side chat panel for lobby communication."""
+    """Toggleable chat overlay for lobby communication."""
 
     def __init__(self, screen: pygame.Surface, username: str = "Player") -> None:
         self.screen = screen
         self._username = username
         self._t = 0.0
+        self._open = False
 
-        # Panel dimensions
-        self.x = SCREEN_W - 420
-        self.y = 170
-        self.w = 400
-        self.h = SCREEN_H - 240  # Leaves space for title and bottom hints
+        # Toggle button - top right corner
+        self._btn_size = 42
+        self._btn_x = SCREEN_W - self._btn_size - 12
+        self._btn_y = 12
+        self._btn_rect = pygame.Rect(self._btn_x, self._btn_y, self._btn_size, self._btn_size)
+
+        # Unread badge
+        self._unread = 0
+
+        # Chat window
+        self.w = 360
+        self.h = 380
+        self.x = SCREEN_W - self.w - 16
+        self.y = 60
 
         # Messages: list of {"sender": str, "text": str, "time": float}
         self.messages: list[dict] = []
-        self._scroll = 0  # 0 = bottom
 
         # Fonts
         self._title_f = pygame.font.SysFont("Arial", 15, bold=True)
         self._msg_f = pygame.font.SysFont("Arial", 13)
         self._sender_f = pygame.font.SysFont("Arial", 13, bold=True)
-        self._hint_f = pygame.font.SysFont("Arial", 11)
+        self._icon_f = pygame.font.SysFont("Arial", 18)
+        self._badge_f = pygame.font.SysFont("Arial", 11, bold=True)
 
         # Input field
         cx = self.x + self.w // 2
@@ -1018,27 +1021,46 @@ class ChatPanel:
                                 max_len=200)
 
         self._btn_send = Button(self.x + self.w - 40, self.y + self.h - 28, ">", w=36, h=32, accent=ACCENT)
+        self._btn_close = Button(self.x + self.w - 40, self.y + 4, "X", w=36, h=28)
 
         # Message line height
         self._line_h = 20
 
+    def toggle(self) -> None:
+        """Toggle chat open/closed."""
+        if self._open:
+            self._open = False
+            self._input.active = False
+        else:
+            self._open = True
+            self._unread = 0
+
+    def is_clicked(self, pos: tuple) -> bool:
+        """Check if toggle button was clicked."""
+        return self._btn_rect.collidepoint(pos)
+
     def add_message(self, sender: str, text: str) -> None:
         """Add a message to the chat history."""
         self.messages.append({"sender": sender, "text": text, "time": self._t})
-        # Keep max 50 messages
         if len(self.messages) > 50:
             self.messages = self.messages[-50:]
-        # Auto-scroll to bottom
-        self._scroll = 0
+        # Increment unread badge when chat is closed
+        if not self._open:
+            self._unread += 1
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         """Handle input events. Returns True if message was sent."""
+        if not self._open:
+            return False
         if self._btn_send.is_clicked(event):
             text = self._input.text.strip()
             if text:
                 self.add_message(self._username, text)
                 self._input.text = ""
                 return True
+        if self._btn_close.is_clicked(event):
+            self.toggle()
+            return False
         if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
             if self._input.active:
                 text = self._input.text.strip()
@@ -1047,32 +1069,60 @@ class ChatPanel:
                     self._input.text = ""
                     return True
         self._input.handle_event(event)
-        # Scroll with mouse wheel
         if event.type == pygame.MOUSEWHEEL:
-            max_scroll = max(0, len(self.messages) * self._line_h - (self.h - 70))
-            if event.y > 0:
-                self._scroll = max(0, self._scroll - self._line_h * 3)
-            else:
-                self._scroll = min(max_scroll, self._scroll + self._line_h * 3)
+            pass  # scroll support if needed
         return False
 
-    def draw(self, mouse: tuple) -> None:
-        """Draw the chat panel."""
-        # Background
-        pygame.draw.rect(self.screen, (12, 18, 35), (self.x, self.y, self.w, self.h), border_radius=8)
-        pygame.draw.rect(self.screen, (40, 60, 100), (self.x, self.y, self.w, self.h), 2, border_radius=8)
+    def _draw_toggle_btn(self, mouse: tuple) -> None:
+        """Draw the chat toggle button."""
+        hovered = self._btn_rect.collidepoint(mouse)
+        bg = (40, 70, 130) if hovered else (20, 35, 65)
+        border = ACCENT if hovered else (50, 80, 140)
+
+        _shadow_rect(self.screen, self._btn_rect, radius=8)
+        pygame.draw.rect(self.screen, bg, self._btn_rect, border_radius=8)
+        pygame.draw.rect(self.screen, border, self._btn_rect, 2, border_radius=8)
+
+        # Chat icon (speech bubble)
+        icon = self._icon_f.render("C", True, ACCENT if hovered else (130, 160, 200))
+        self.screen.blit(icon, (self._btn_rect.centerx - icon.get_width() // 2,
+                                self._btn_rect.centery - icon.get_height() // 2))
+
+        # Unread badge
+        if self._unread > 0:
+            badge_txt = self._badge_f.render(str(self._unread), True, WHITE)
+            badge_r = 10
+            bx = self._btn_rect.right - 4
+            by = self._btn_rect.top - 4
+            pygame.draw.circle(self.screen, (220, 60, 60), (bx, by), badge_r)
+            self.screen.blit(badge_txt, (bx - badge_txt.get_width() // 2,
+                                         by - badge_txt.get_height() // 2))
+
+    def _draw_window(self, mouse: tuple) -> None:
+        """Draw the open chat window."""
+        # Overlay dim
+        overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 100))
+        self.screen.blit(overlay, (0, 0))
+
+        # Window background
+        pygame.draw.rect(self.screen, (12, 18, 35), (self.x, self.y, self.w, self.h), border_radius=10)
+        pygame.draw.rect(self.screen, (60, 100, 180), (self.x, self.y, self.w, self.h), 2, border_radius=10)
 
         # Title bar
         title = self._title_f.render("CHAT", True, ACCENT)
-        self.screen.blit(title, (self.x + 12, self.y + 8))
+        self.screen.blit(title, (self.x + 14, self.y + 6))
+
+        # Close button
+        self._btn_close.draw(self.screen, mouse)
 
         # Separator
-        pygame.draw.line(self.screen, (40, 60, 100), (self.x + 8, self.y + 30),
-                         (self.x + self.w - 8, self.y + 30), 1)
+        pygame.draw.line(self.screen, (40, 60, 100), (self.x + 8, self.y + 32),
+                         (self.x + self.w - 8, self.y + 32), 1)
 
         # Messages area
-        msg_area_y = self.y + 38
-        msg_area_h = self.h - 80  # Space for input field
+        msg_area_y = self.y + 40
+        msg_area_h = self.h - 82
 
         visible_lines = msg_area_h // self._line_h
         start_idx = max(0, len(self.messages) - visible_lines)
@@ -1083,16 +1133,15 @@ class ChatPanel:
             sender = msg["sender"]
             text = msg["text"]
 
-            # Sender name
             is_self = (sender == self._username)
             sender_col = ACCENT if is_self else (200, 180, 100)
             sender_lbl = self._sender_f.render(f"{sender}:", True, sender_col)
-            self.screen.blit(sender_lbl, (self.x + 10, y))
+            self.screen.blit(sender_lbl, (self.x + 12, y))
 
-            # Message text (wrap if too long)
-            max_text_w = self.w - 20 - sender_lbl.get_width()
+            # Message text with truncation
+            max_text_w = self.w - 24 - sender_lbl.get_width()
             text_color = (180, 190, 210) if is_self else C_LABEL
-            self._draw_wrapped_text(text, self.x + 14 + sender_lbl.get_width(), y,
+            self._draw_wrapped_text(text, self.x + 16 + sender_lbl.get_width(), y,
                                     max_text_w, text_color)
 
             y += self._line_h
@@ -1107,12 +1156,17 @@ class ChatPanel:
         """Draw text that may be truncated if too long."""
         lbl = self._msg_f.render(text, True, color)
         if lbl.get_width() > max_w:
-            # Truncate with ellipsis
             for i in range(len(text) - 1, 0, -1):
                 lbl = self._msg_f.render(text[:i] + "..", True, color)
                 if lbl.get_width() <= max_w:
                     break
         self.screen.blit(lbl, (x, y))
+
+    def draw(self, mouse: tuple) -> None:
+        """Draw the chat UI (toggle button always, window when open)."""
+        self._draw_toggle_btn(mouse)
+        if self._open:
+            self._draw_window(mouse)
 
 
 # ── HOST LOBBY ────────────────────────────────────────────────────────
@@ -1214,6 +1268,9 @@ class HostLobby:
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     self._close(); return "back"
                 self._picker.handle_event(event)
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if self._chat.is_clicked(event.pos):
+                        self._chat.toggle()
                 if self._chat.handle_event(event):
                     # Message was sent - send to client
                     if self._net.is_connected():
@@ -1521,6 +1578,9 @@ class ClientLobby:
         btn_ok = Button(cx - 80, py + 170, "  JOIN  ", w=140, h=42, accent=ACCENT)
         btn_cancel = Button(cx + 80, py + 170, "  CANCEL  ", w=140, h=42)
 
+        # Draw underlying screen first so popup overlays it
+        self._draw_status(f"Connected to {self.host_ip} - Enter code to join", (100, 180, 255))
+
         clock = pygame.time.Clock()
         while True:
             dt = clock.tick(60) / 1000.0
@@ -1540,9 +1600,9 @@ class ClientLobby:
                 if btn_cancel.is_clicked(event):
                     return None
 
-            # Draw popup over current screen
+            # Dimmed overlay
             overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 160))
+            overlay.fill((0, 0, 0, 140))
             self.screen.blit(overlay, (0, 0))
 
             # Popup background
@@ -1598,6 +1658,9 @@ class ClientLobby:
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     self._leave(); return
                 self._picker.handle_event(event)
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if self._chat.is_clicked(event.pos):
+                        self._chat.toggle()
                 if self._chat.handle_event(event):
                     if self._net.is_connected():
                         msg = self._chat.messages[-1]
