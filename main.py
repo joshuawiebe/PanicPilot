@@ -1169,7 +1169,7 @@ class ChatPanel:
         """Check if toggle button was clicked."""
         return self._btn_rect.collidepoint(pos)
 
-    def add_message(self, sender: str, text: str) -> None:
+    def add_message(self, sender: str, text: str, is_local: bool = False) -> None:
         """Add a message to the chat history."""
         self.messages.append({"sender": sender, "text": text, "time": self._t})
         if len(self.messages) > 50:
@@ -1177,6 +1177,9 @@ class ChatPanel:
         # Increment unread badge when chat is closed
         if not self._open:
             self._unread += 1
+        # Play sound for incoming messages
+        if not is_local and _sound_mod:
+            _sound_mod.get().play_chat_recv()
 
     def handle_event(self, event: pygame.event.Event) -> bool:
         """Handle input events. Returns True if message was sent."""
@@ -1185,8 +1188,10 @@ class ChatPanel:
         if self._btn_send.is_clicked(event):
             text = self._input.text.strip()
             if text:
-                self.add_message(self._username, text)
+                self.add_message(self._username, text, is_local=True)
                 self._input.text = ""
+                if _sound_mod:
+                    _sound_mod.get().play_chat_send()
                 return True
         if self._btn_close.is_clicked(event):
             self.toggle()

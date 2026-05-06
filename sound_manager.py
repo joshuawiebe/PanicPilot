@@ -376,6 +376,55 @@ def _gen_pause_sound() -> pygame.Sound:
         return _make_stereo_sound(_normalize(wave, 0.5))
 
 
+def _gen_chat_send_sound() -> pygame.Sound:
+    """Light notification ding for sending chat message."""
+    if _HAS_NP:
+        n = int(_SAMPLE_RATE * 0.15)
+        t = np.linspace(0, 0.15, n, endpoint=False)
+        w = 0.5 * np.sin(2*np.pi*800*t) + 0.2 * np.sin(2*np.pi*1200*t)
+        env = np.exp(-t * 8)
+        return _np_make_stereo(w * env * 0.6)
+    else:
+        n = int(_SAMPLE_RATE * 0.15)
+        wave = []
+        for i in range(n):
+            t = i / _SAMPLE_RATE
+            env = math.exp(-t * 8)
+            wave.append(0.6 * (0.5*math.sin(2*math.pi*800*t) +
+                               0.2*math.sin(2*math.pi*1200*t)) * env)
+        return _make_stereo_sound(_normalize(wave, 0.6))
+
+
+def _gen_chat_recv_sound() -> pygame.Sound:
+    """Two-tone notification for receiving chat message."""
+    if _HAS_NP:
+        n = int(_SAMPLE_RATE * 0.2)
+        t = np.linspace(0, 0.2, n, endpoint=False)
+        a = int(0.1 * _SAMPLE_RATE)
+        w = np.zeros(n)
+        env1 = np.exp(-t[:a] * 10)
+        w[:a] = 0.5 * np.sin(2*np.pi*600*t[:a]) * env1
+        t2 = t[a:] - t[a]
+        env2 = np.exp(-t2 * 10)
+        w[a:] = 0.5 * np.sin(2*np.pi*800*t2) * env2
+        return _np_make_stereo(w * 0.6)
+    else:
+        n = int(_SAMPLE_RATE * 0.2)
+        a = int(0.1 * _SAMPLE_RATE)
+        wave = []
+        for i in range(n):
+            t = i / _SAMPLE_RATE
+            if i < a:
+                env = math.exp(-t * 10)
+                v = 0.5 * math.sin(2*math.pi*600*t) * env
+            else:
+                t2 = (i - a) / _SAMPLE_RATE
+                env = math.exp(-t2 * 10)
+                v = 0.5 * math.sin(2*math.pi*800*t2) * env
+            wave.append(v * 0.6)
+        return _make_stereo_sound(_normalize(wave, 0.6))
+
+
 # ─── Main class ─────────────────────────────────────────────────────────────
 
 class SoundManager:
@@ -465,6 +514,10 @@ class SoundManager:
                                                      _gen_win_fanfare)
         self._sfx["pause"]         = self._try_load("pause.ogg",
                                                      _gen_pause_sound)
+        self._sfx["chat_send"]     = self._try_load("chat_send.ogg",
+                                                     _gen_chat_send_sound)
+        self._sfx["chat_recv"]     = self._try_load("chat_recv.ogg",
+                                                     _gen_chat_recv_sound)
         # Volume anwenden
         for snd in self._sfx.values():
             if snd:
@@ -821,6 +874,14 @@ class SoundManager:
 
     def play_pause(self) -> None:
         self._play_sfx("pause", 0.6)
+
+    def play_chat_send(self) -> None:
+        """Play sound when sending a chat message."""
+        self._play_sfx("chat_send", 0.5)
+
+    def play_chat_recv(self) -> None:
+        """Play sound when receiving a chat message."""
+        self._play_sfx("chat_recv", 0.5)
 
     def pause_fade(self, duration_ms: int = 200) -> None:
         """Fade out engine and music for pause."""
