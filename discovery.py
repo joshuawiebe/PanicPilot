@@ -25,7 +25,7 @@ log = logging.getLogger("discovery")
 DISCOVERY_PORT = 54322          # Different from TCP port
 BEACON_INTERVAL = 1.5           # Send beacon every 1.5 seconds
 ROOM_TIMEOUT = 8.0              # Consider room dead if no beacon for 8 seconds
-DISCOVER_LISTEN_TIME = 6.0      # Listen for 6 seconds when discovering
+DISCOVER_LISTEN_TIME = 6.0      # Initial listen time before UI shows results
 
 
 # ── Room Broadcaster (Host-side) ──────────────────────────────────────────────
@@ -134,11 +134,11 @@ class RoomListener:
     
     def start_discovery(self, timeout: float = DISCOVER_LISTEN_TIME) -> None:
         """
-        Start listening for beacons for a limited time.
-        Blocks for ~timeout seconds while collecting rooms in background.
+        Start listening for beacons. Continues running in background
+        to discover new rooms that appear later.
         
         Args:
-            timeout: How long to listen (seconds)
+            timeout: Initial delay before rooms are considered "ready" (seconds)
         """
         if self._thread and self._thread.is_alive():
             return
@@ -153,6 +153,12 @@ class RoomListener:
             name="discovery-listener"
         )
         self._thread.start()
+    
+    def restart_discovery(self) -> None:
+        """Restart the listener to refresh the room list."""
+        self.stop()
+        self._rooms.clear()
+        self.start_discovery()
     
     def stop(self) -> None:
         """Stop listening for beacons."""
@@ -185,8 +191,8 @@ class RoomListener:
         """Check if listener is currently active."""
         return self._running and self._thread and self._thread.is_alive()
     
-    def _listen_loop(self, timeout: float) -> None:
-        """Listens for room beacons."""
+    def _listen_loop(self, initial_timeout: float) -> None:
+        """Listens for room beacons continuously."""
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.settimeout(0.5)
@@ -199,20 +205,11 @@ class RoomListener:
                 self._running = False
             return
         
-        start_time = datetime.now()
-        
         try:
             while True:
                 with self._lock:
                     if not self._running:
                         break
-                
-                # Check timeout
-                elapsed = (datetime.now() - start_time).total_seconds()
-                if elapsed >= timeout:
-                    with self._lock:
-                        self._running = False
-                    break
                 
                 try:
                     payload, (addr, _) = sock.recvfrom(1024)

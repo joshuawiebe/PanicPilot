@@ -11,7 +11,7 @@
 #  draw(player_id=…):
 #    PLAYER_HOST (0) / PLAYER_CLIENT (1) controls the visual status.
 #
-#  EntityParticleSystem:
+#  ParticleSystem:
 #    emit_boost_sparks(x, y)           – yellow sparks on boost pickup
 #    emit_dust(x, y, angle, speed, surface_type)  – dust/ice behind wheels
 # =============================================================================
@@ -23,7 +23,6 @@ from settings import *
 
 PLAYER_HOST   = 0
 PLAYER_CLIENT = 1
-
 
 # =============================================================================
 #  FuelCanister
@@ -140,7 +139,6 @@ class FuelCanister:
             secs = max(0, math.ceil(self._respawn_timer))
             lbl = self._font.render(str(secs), True, GRAY)
             surface.blit(lbl, (cx - lbl.get_width()//2, cy - lbl.get_height()//2))
-
 
 # =============================================================================
 #  BoostPad
@@ -272,7 +270,6 @@ class BoostPad:
             lbl  = self._font.render(str(secs), True, (100, 100, 40))
             surface.blit(lbl, (sx - lbl.get_width()//2, sy - lbl.get_height()//2))
 
-
 # =============================================================================
 #  OilSlick
 # =============================================================================
@@ -389,119 +386,9 @@ class OilSlick:
     def _draw_ghost(self, surface, sx, sy, r):
         pygame.draw.circle(surface, (30, 30, 30), (sx, sy), r, 1)
 
-
 # =============================================================================
-#  EntityParticleSystem  –  Phase 6.2b
+#  ParticleSystem  –  Phase 6.2b
 # =============================================================================
-class _EParticle:
-    __slots__ = ("x","y","vx","vy","life","max_life","color","radius","alpha_start")
-
-    def __init__(self, x, y, vx, vy, life, color, radius, alpha_start=255):
-        self.x = x; self.y = y
-        self.vx = vx; self.vy = vy
-        self.life = life; self.max_life = life
-        self.color = color; self.radius = radius
-        self.alpha_start = alpha_start
-
-    def update(self, dt: float) -> bool:
-        self.x  += self.vx * dt
-        self.y  += self.vy * dt
-        self.vx *= 0.88
-        self.vy *= 0.88
-        self.life -= dt
-        return self.life > 0
-
-    def draw(self, surface: pygame.Surface, off_x: int, off_y: int, zoom: float) -> None:
-        frac  = max(0.0, self.life / self.max_life)
-        alpha = int(self.alpha_start * frac)
-        r     = max(1, int(self.radius * frac))
-        tmp   = pygame.Surface((r*2, r*2), pygame.SRCALPHA)
-        pygame.draw.circle(tmp, (*self.color, alpha), (r, r), r)
-        surface.blit(tmp, (int(self.x * zoom) + off_x - r,
-                           int(self.y * zoom) + off_y - r))
-
-
-class EntityParticleSystem:
-    """
-    Particle effects for boost sparks and surface dust.
-
-    Integration in game.py / client.py:
-        self.entity_particles = EntityParticleSystem()
-        # in update():
-        self.entity_particles.emit_boost_sparks(b.x, b.y)   # after boost pickup
-        self.entity_particles.emit_dust(s.x, s.y, s.angle, s.speed, surf)
-        self.entity_particles.update(dt)
-        # in draw_world():
-        self.entity_particles.draw(surface, off_x, off_y, zoom)
-    """
-    MAX = 250
-
-    def __init__(self) -> None:
-        self._p: list[_EParticle] = []
-
-    # ── Emitter ──────────────────────────────────────────────────────────────
-
-    def emit_boost_sparks(self, x: float, y: float) -> None:
-        """Yellow-white spark burst on boost pickup."""
-        cols = [(255, 230, 50), (255, 200, 0), (255, 255, 180), (255, 160, 0)]
-        for _ in range(24):
-            a  = random.uniform(0, math.pi * 2)
-            sp = random.uniform(70, 220)
-            self._p.append(_EParticle(
-                x + random.uniform(-6, 6),
-                y + random.uniform(-6, 6),
-                math.cos(a) * sp, math.sin(a) * sp,
-                random.uniform(0.35, 0.8),
-                random.choice(cols),
-                random.uniform(3, 7),
-                alpha_start=230,
-            ))
-
-    def emit_dust(self, x: float, y: float,
-                  angle: float, speed: float,
-                  surface_type: str = "grass") -> None:
-        """
-        Small particles behind the rear wheels.
-        Called per frame – has internal rate limiter.
-        surface_type: "ice" → ice crystals (light blue)
-                      "desert" → sand (brown-yellow)
-                      "grass"  → dirt (brown-green)
-        """
-        if abs(speed) < 25 or len(self._p) >= self.MAX:
-            return
-        if surface_type == "ice":
-            cols = [(200, 225, 255), (180, 210, 240), (220, 235, 255)]
-        elif surface_type == "desert":
-            cols = [(200, 170, 90),  (185, 155, 75),  (215, 190, 110)]
-        else:
-            cols = [(155, 135, 95),  (130, 110, 78),  (100, 90, 60)]
-
-        rad = math.radians(angle)
-        bvx = -math.sin(rad) * abs(speed) * 0.14
-        bvy =  math.cos(rad) * abs(speed) * 0.14
-        for _ in range(2):
-            s = random.uniform(18, 55)
-            self._p.append(_EParticle(
-                x + random.uniform(-10, 10),
-                y + random.uniform(-10, 10),
-                bvx + random.uniform(-s, s),
-                bvy + random.uniform(-s, s),
-                random.uniform(0.18, 0.48),
-                random.choice(cols),
-                random.uniform(2, 5),
-                alpha_start=170,
-            ))
-
-    # ── Update / Draw ─────────────────────────────────────────────────────────
-
-    def update(self, dt: float) -> None:
-        self._p = [p for p in self._p if p.update(dt)]
-
-    def draw(self, surface: pygame.Surface,
-             off_x: int = 0, off_y: int = 0, zoom: float = 1.0) -> None:
-        for p in self._p:
-            p.draw(surface, off_x, off_y, zoom)
-
 
 # =============================================================================
 #  ItemBox  –  Phase 7
@@ -516,7 +403,6 @@ ITEMS_POOL = [
     "green_boomerang",
     "red_boomerang",
 ]
-
 
 class ItemBox:
     RADIUS       = 22
@@ -656,7 +542,6 @@ class ItemBox:
             surface.blit(lbl, (sx - lbl.get_width()//2,
                                sy - lbl.get_height()//2))
 
-
 # =============================================================================
 #  Boomerangs  –  Phase 8
 # =============================================================================
@@ -674,7 +559,6 @@ BOOMERANG_SPEED     = 620.0   # px/s
 BOOMERANG_LIFETIME  = 4.5     # Seconds until self-destruction
 BOOMERANG_RADIUS    = 10
 MAX_BOUNCES         = 4       # GreenBoomerang max bounces
-
 
 class GreenBoomerang:
     """Flies straight, bounces off walls, triggers spin_timer on hit."""
@@ -784,7 +668,6 @@ class GreenBoomerang:
         glow = pygame.Surface((r*4, r*4), pygame.SRCALPHA)
         pygame.draw.circle(glow, (80, 255, 100, 60), (r*2, r*2), r*2)
         surface.blit(glow, (sx - r*2, sy - r*2))
-
 
 class RedBoomerang:
     """

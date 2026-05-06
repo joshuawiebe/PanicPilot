@@ -170,8 +170,14 @@ python main.py
 
 ## Notes
 
-- Settings (volume, username, fullscreen) are saved automatically to `user_settings.json`
+- Settings (volume, username, fullscreen) are saved automatically to `user_settings.json` in the OS temp directory
+- Connection history is stored in `connection_history.json` in the OS temp directory
 - Custom audio files can be placed in `assets/sounds/`. Missing files are automatically replaced with procedurally generated audio.
 - If pygame audio errors occur, it is usually caused by missing SDL2 mixer libraries, not the code.
 - The host's IP address is shown in the window title bar for the client to connect.
 - Both players must be on the same local network for multiplayer to work.
+- LAN auto-discovery finds available rooms without manual IP entry
+- First-start wizard introduces controls, game modes, and mechanics on initial launch
+- Vehicle selection features smooth hover animations with scale-up effects
+- In-game settings changes require peer confirmation before applying
+- All UI icons are drawn with geometric pygame primitives (no emoji or external assets)

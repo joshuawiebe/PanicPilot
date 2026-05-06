@@ -70,20 +70,28 @@ class ConnectionHistory:
     def __init__(self) -> None:
         _migrate_old_file()
         self.connections: list[dict] = []
+        self._ip_index: dict[str, dict] = {}
         self._load()
 
     def _load(self) -> None:
         """Load connection history from JSON file."""
         if not os.path.exists(HISTORY_FILE):
             self.connections = []
+            self._ip_index = {}
             return
 
         try:
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 self.connections = data.get("connections", [])
+                self._rebuild_index()
         except (json.JSONDecodeError, IOError):
             self.connections = []
+            self._ip_index = {}
+
+    def _rebuild_index(self) -> None:
+        """Rebuild the IP index from the connections list."""
+        self._ip_index = {conn["ip"]: conn for conn in self.connections}
 
     def _save(self) -> None:
         """Save connection history to JSON file."""
@@ -102,19 +110,17 @@ class ConnectionHistory:
             username: Custom name for this connection (defaults to username)
             success: Whether connection was successful
         """
-        existing = None
-        for conn in self.connections:
-            if conn["ip"] == ip:
-                existing = conn
-                break
-
         now = datetime.now().isoformat()
+        existing = self._ip_index.get(ip)
 
         if existing:
             existing["last_used"] = now
             existing["success"] = success
             if username:
                 existing["username"] = username
+            # Move to front
+            self.connections.remove(existing)
+            self.connections.insert(0, existing)
         else:
             new_entry = {
                 "ip": ip,
@@ -123,12 +129,14 @@ class ConnectionHistory:
                 "success": success,
             }
             self.connections.insert(0, new_entry)
+            self._ip_index[ip] = new_entry
             self.connections = self.connections[:self.MAX_ENTRIES]
 
         self.connections.sort(
             key=lambda x: (not x.get("success", False), x.get("last_used", "")),
             reverse=True,
         )
+        self._rebuild_index()
         self._save()
 
     def get_recent(self, limit: int = 5) -> list[dict]:
@@ -147,10 +155,8 @@ class ConnectionHistory:
 
     def find_by_ip(self, ip: str) -> Optional[dict]:
         """Find a connection entry by IP address."""
-        for conn in self.connections:
-            if conn["ip"] == ip:
-                return conn.copy()
-        return None
+        conn = self._ip_index.get(ip)
+        return conn.copy() if conn else None
 
     def remove(self, ip: str) -> bool:
         """
@@ -159,16 +165,17 @@ class ConnectionHistory:
         Returns:
             True if found and removed, False otherwise
         """
-        for i, conn in enumerate(self.connections):
-            if conn["ip"] == ip:
-                self.connections.pop(i)
-                self._save()
-                return True
+        if ip in self._ip_index:
+            conn = self._ip_index.pop(ip)
+            self.connections.remove(conn)
+            self._save()
+            return True
         return False
 
     def clear(self) -> None:
         """Clear all history."""
         self.connections = []
+        self._ip_index = {}
         self._save()
 
     def update_username(self, ip: str, new_username: str) -> bool:
@@ -178,9 +185,9 @@ class ConnectionHistory:
         Returns:
             True if found and updated, False otherwise
         """
-        for conn in self.connections:
-            if conn["ip"] == ip:
-                conn["username"] = new_username
-                self._save()
-                return True
+        conn = self._ip_index.get(ip)
+        if conn:
+            conn["username"] = new_username
+            self._save()
+            return True
         return False

@@ -11,6 +11,16 @@ DISPLAY_W = 1920
 DISPLAY_H = 1080
 USERNAME = ""
 
+# ── Game Modes ────────────────────────────────────────────────────────────────
+MODE_SPLIT = 1
+MODE_PANIC = 2
+MODE_PVP = 3
+MODE_NAMES = {
+    MODE_SPLIT: "Split Control",
+    MODE_PANIC: "Panic Pilot",
+    MODE_PVP: "PvP Racing",
+}
+
 BLACK       = (  0,   0,   0)
 WHITE       = (255, 255, 255)
 GRAY        = (100, 100, 100)

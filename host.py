@@ -70,7 +70,7 @@ class HostGame(Game):
         self.speed_scale = speed_scale
 
         # Ensure fog surface is fully black from the start for mode 2
-        if self.mode == 2:
+        if self.mode == MODE_PANIC:
             self._fog_surf.fill((0, 0, 0, FOG_ALPHA))
 
         self._last_client_inp    = InputState()
@@ -252,7 +252,7 @@ class HostGame(Game):
         # Freeze countdown until client connects
         if not self._net.is_connected() and self._countdown > 0:
             self.cars[0].state.speed = 0.0
-            if self.mode == 3:
+            if self.mode == MODE_PVP:
                 self.cars[1].state.speed = 0.0
             self._net.send_state(self._build_packet())
             return
@@ -280,11 +280,11 @@ class HostGame(Game):
 
         # Input per mode
         keys = pygame.key.get_pressed()
-        if self.mode == 1:
+        if self.mode == MODE_SPLIT:
             merged_inp = InputState.merge(InputState.host_keys(keys),
                                           self._last_client_inp)
             car1_inp   = None
-        elif self.mode == 2:
+        elif self.mode == MODE_PANIC:
             merged_inp = InputState.from_keys(keys)
             car1_inp   = None
         else:
@@ -322,10 +322,10 @@ class HostGame(Game):
             "car1_class": self.cars[1].car_class,
             # Inventory sync: client shows own item correctly
             "car0_inv":   self.cars[0].inventory or "",
-            "car1_inv":   (self.cars[1].inventory or "") if self.mode == 3 else "",
+            "car1_inv":   (self.cars[1].inventory or "") if self.mode == MODE_PVP else "",
         }
         # Car B (Mode 3)
-        if self.mode == 3:
+        if self.mode == MODE_PVP:
             s1 = self.cars[1].state
             pkt["car1"] = {
                 "x": s1.x, "y": s1.y,
@@ -341,7 +341,7 @@ class HostGame(Game):
         self.screen = pygame.display.get_surface() or self.screen
         s = self.cars[0].state
         self.draw_world(self.screen)
-        if self.mode == 2:
+        if self.mode == MODE_PANIC:
             csx, csy = self.camera.w2s(s.x, s.y)
             self.draw_ping_glow_through_fog(self.screen)
             self.draw_fog(self.screen, (csx, csy))

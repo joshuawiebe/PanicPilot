@@ -494,6 +494,8 @@ class Track:
         theme=None → random theme selected from theme.THEMES.
         """
         from theme import Theme
+        # Validate and clamp track length
+        length = max(10, min(50, length))
         rng = random.Random(seed)
 
         # Choose theme

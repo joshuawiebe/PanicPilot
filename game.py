@@ -28,7 +28,7 @@ from entities import (
     ItemBox,
     GreenBoomerang,
     RedBoomerang,
-    EntityParticleSystem,
+    ParticleSystem,
     PLAYER_HOST,
     PLAYER_CLIENT,
     BOOMERANG_SPEED,
@@ -130,6 +130,8 @@ class Game:
 
         self._flash_surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
         self._fog_surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        self._overlay_surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        self._overlay_surf.fill((0, 0, 0, 160))
 
         self.camera = Camera()
         self._init_game_objects()
@@ -195,7 +197,7 @@ class Game:
 
         # Canisters with IDs (for network sync)
         # In mode 3 (PvP) activate pvp_mode so collected_by works correctly
-        pvp = self.mode == 3
+        pvp = self.mode == MODE_PVP
         self.canisters: list[FuelCanister] = []
         for i, (cx, cy) in enumerate(self.track.canister_positions()):
             c = FuelCanister(cx, cy, canister_id=i)
@@ -220,7 +222,7 @@ class Game:
             ib.set_pvp_mode(pvp)
             self.item_boxes.append(ib)
 
-        self.entity_particles = EntityParticleSystem()
+        self.entity_particles = ParticleSystem()
         self.boomerangs: list = []  # GreenBoomerang | RedBoomerang
 
         self.elapsed_time = 0.0
@@ -429,7 +431,7 @@ class Game:
             self.game_over = True
 
         # ── Car 1 (Mode 3) ──────────────────────────────────────────────
-        if self.mode == 3 and input_car1 is not None:
+        if self.mode == MODE_PVP and input_car1 is not None:
             s1 = self.cars[1].state
             surf1 = self.track.surface_at(s1.x, s1.y)
             grip1 = self._get_grip(surf1, self.cars[1])
@@ -459,7 +461,7 @@ class Game:
         for ib in self.item_boxes:
             ib.update(dt)
         self._apply_pickups(self.cars[0], PLAYER_HOST, surf0, inp0.use_item)
-        if self.mode == 3:
+        if self.mode == MODE_PVP:
             s1 = self.cars[1].state
             surf1_now = self.track.surface_at(s1.x, s1.y)
             use1 = input_car1.use_item if input_car1 is not None else False
@@ -473,7 +475,7 @@ class Game:
         pos = [
             (c.state.x, c.state.y)
             for c in self.cars
-            if self.mode == 3 or c is self.cars[0]
+            if self.mode == MODE_PVP or c is self.cars[0]
         ]
         for brang in self.boomerangs:
             if not brang.active:
@@ -491,7 +493,7 @@ class Game:
                 brang.update(dt, self.track, tx, ty)
             # Check collision with all cars
             for i, car in enumerate(self.cars):
-                if self.mode != 3 and i == 1:
+                if self.mode != MODE_PVP and i == 1:
                     continue
                 pid = PLAYER_HOST if i == 0 else PLAYER_CLIENT
                 if brang.check_hit(car.state.x, car.state.y, pid):
@@ -504,11 +506,11 @@ class Game:
         # ── Win Condition: Out of fuel ───────────────────────────────────
         if self.winner is None:
             if s0.fuel <= 0.0:
-                self.winner = "client" if self.mode == 3 else None
+                self.winner = "client" if self.mode == MODE_PVP else None
                 self.game_over = True
                 if _SM:
                     _SM.engine_stop()
-            elif self.mode == 3:
+            elif self.mode == MODE_PVP:
                 s1 = self.cars[1].state
                 if s1.fuel <= 0.0:
                     self.winner = "host"
@@ -524,7 +526,7 @@ class Game:
                 if _SM:
                     _SM.engine_stop()
                     _SM.play_win_fanfare()
-            elif self.mode == 3:
+            elif self.mode == MODE_PVP:
                 s1 = self.cars[1].state
                 if self.track.crosses_finish(s1.x, s1.y, self.cars[1].get_radius()):
                     self.winner = "client"
@@ -533,7 +535,7 @@ class Game:
                         _SM.engine_stop()
 
         # ── Kamera ───────────────────────────────────────────────────────────
-        if self.mode == 3:
+        if self.mode == MODE_PVP:
             self._update_camera_pvp(dt)
         else:
             self.camera.update(s0.x, s0.y, dt)
@@ -560,7 +562,7 @@ class Game:
 
             _SM.update_engine(s0.speed, CAR_MAX_SPEED, dt)
 
-        if self.mode == 1:
+        if self.mode == MODE_SPLIT:
             self.camera.zoom = 1.0
 
     # ─── Physics helpers ────────────────────────────────────────────────
@@ -661,7 +663,7 @@ class Game:
             ox = s.x - sin_a * drop_dist
             oy = s.y + cos_a * drop_dist
             new_oil = OilSlick(ox, oy, slick_id=len(self.oils))
-            new_oil.set_pvp_mode(self.mode == 3)
+            new_oil.set_pvp_mode(self.mode == MODE_PVP)
             self.oils.append(new_oil)
             self.entity_particles.emit_boost_sparks(ox, oy)
 
@@ -762,7 +764,7 @@ class Game:
             self._flash_surf.fill((255, 200, 0, alpha))
             surface.blit(self._flash_surf, (0, 0))
         for car in self.cars:
-            if self.mode != 3 and car is self.cars[1]:
+            if self.mode != MODE_PVP and car is self.cars[1]:
                 continue
             car.draw(surface, off_x, off_y, zoom)
         for brang in self.boomerangs:
@@ -899,29 +901,23 @@ class Game:
             cx = max(margin, min(SCREEN_W - margin, sx))
             cy = max(margin, min(SCREEN_H - margin, sy))
 
-            # Draw arrow pointing from edge toward the ping
+            # Direction from center to ping
             dx = sx - SCREEN_W // 2
             dy = sy - SCREEN_H // 2
             length = math.hypot(dx, dy)
             if length < 1:
                 continue
-            nx, ny = dx / length, dy / length
 
-            # Arrow tip at clamped position
-            tip = (int(cx), int(cy))
-            # Arrow body
-            back_x = int(cx - nx * 14)
-            back_y = int(cy - ny * 14)
-            perp_x = int(-ny * 7)
-            perp_y = int(nx * 7)
-
-            arrow_surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            # Draw arrow pointing from edge toward the ping
+            angle = math.degrees(math.atan2(dy, dx)) - 90
+            arrow_surf = pygame.Surface((20, 16), pygame.SRCALPHA)
             pygame.draw.polygon(arrow_surf, (*color, alpha), [
-                tip,
-                (back_x + perp_x, back_y + perp_y),
-                (back_x - perp_x, back_y - perp_y),
+                (10, 0),
+                (0, 16),
+                (20, 16),
             ])
-            surface.blit(arrow_surf, (0, 0))
+            rotated = pygame.transform.rotate(arrow_surf, angle)
+            surface.blit(rotated, (int(cx) - rotated.get_width() // 2, int(cy) - rotated.get_height() // 2))
 
     def draw_hud(self, surface: pygame.Surface) -> None:
         s = self.cars[0].state
@@ -963,11 +959,9 @@ class Game:
     def draw_winner(self, surface: pygame.Surface) -> None:
         if self.winner is None and not self.game_over:
             return
-        overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 175))
-        surface.blit(overlay, (0, 0))
+        surface.blit(self._overlay_surf, (0, 0))
         cy = SCREEN_H // 2 - 80
-        if self.mode == 3:
+        if self.mode == MODE_PVP:
             if self.winner == "host":
                 txt, color = f"{self._host_room_name.upper()} WINS!", CAR_COLOR_HOST
             elif self.winner == "client":
@@ -996,9 +990,7 @@ class Game:
 
     def draw_pause_overlay(self, surface: pygame.Surface) -> None:
         """Enhanced pause overlay with lobby/quit buttons (Phase 11)."""
-        overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 160))
-        surface.blit(overlay, (0, 0))
+        surface.blit(self._overlay_surf, (0, 0))
 
         cx = SCREEN_W // 2
         bw, bh, gap = 300, 52, 14
@@ -1044,7 +1036,7 @@ class Game:
 
     def draw(self) -> None:
         self.draw_world(self.screen)
-        if self.mode == 2:
+        if self.mode == MODE_PANIC:
             csx, csy = self.camera.w2s(self.cars[0].state.x, self.cars[0].state.y)
             self.draw_ping_glow_through_fog(self.screen)
             self.draw_fog(self.screen, (csx, csy))

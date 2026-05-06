@@ -1410,7 +1410,7 @@ class HostLobby:
         generated  = Track.generate(length=self.length)
         map_data   = {**generated.to_dict(), "game_mode": self.mode}
         client_cls = self._client_class or "balanced"
-        pvp        = (self.mode == 3)
+        pvp        = (self.mode == MODE_PVP)
         start_pkt  = {
             "host_class":   self._picker.selected,
             "client_class": client_cls,
@@ -1537,7 +1537,7 @@ class HostLobby:
         self.screen.blit(info, ((SCREEN_W - info.get_width()) // 2, panel_y + 68))
 
         # Phase 11.2: locked_classes & coop_info correctly per mode
-        pvp       = (self.mode == 3)
+        pvp       = (self.mode == MODE_PVP)
         locked    = ({"Client": self._client_class}
                      if pvp and self._client_handshaked and self._client_class
                      else {})
@@ -2506,15 +2506,6 @@ class InGameSettingsScene:
 class _FirstStartSetup:
     """Multi-slide tutorial shown on first launch."""
 
-    ICONS = {
-        "racing": "🏎",
-        "driver": "🎮",
-        "navigator": "🗺",
-        "modes": "⚡",
-        "fuel": "⛽",
-        "multiplayer": "👥",
-    }
-
     SLIDES = [
         {
             "title": "WELCOME TO PANIC PILOT",
@@ -2587,16 +2578,38 @@ class _FirstStartSetup:
                 "Both players must agree on the game mode and settings.",
             ],
         },
+        {
+            "title": "EXTRAS & TIPS",
+            "icon": "racing",
+            "lines": [
+                "  F11           -  Toggle fullscreen mode",
+                "  Ctrl+V        -  Paste IP address in connect screen",
+                "  ESC           -  Pause game / close menus",
+                "  N             -  Request mode switch (co-op modes)",
+                "  Y / N         -  Accept / decline mode switch request",
+                "",
+                "Settings and connection history are stored in",
+                "your OS temp directory and persist between runs.",
+            ],
+        },
     ]
+
+    ICON_COLORS = {
+        "racing": (200, 50, 50),
+        "driver": (50, 150, 255),
+        "navigator": (0, 200, 210),
+        "modes": (255, 220, 0),
+        "fuel": (255, 180, 0),
+        "multiplayer": (50, 200, 50),
+    }
 
     def __init__(self, screen: pygame.Surface) -> None:
         self.screen = screen
         self._t = 0.0
         cx = SCREEN_W // 2
-        self._title_f = pygame.font.SysFont("Arial", 38, bold=True)
-        self._sub_f = pygame.font.SysFont("Arial", 17)
+        self._title_f = pygame.font.SysFont("Arial", 36, bold=True)
+        self._sub_f = pygame.font.SysFont("Arial", 16)
         self._hint_f = pygame.font.SysFont("Arial", 13)
-        self._icon_f = pygame.font.SysFont("Arial", 48)
 
         self._slide = 0
         self._first_draw = True
@@ -2606,6 +2619,12 @@ class _FirstStartSetup:
                               allowed_chars=string.ascii_letters + string.digits + " ._-",
                               max_len=20)
         self._inp.active = True
+
+        # Buttons: NEXT right of center, SKIP left of center, near bottom
+        self._btn_w = 150
+        self._btn_h = 42
+        self._btn_gap = 20
+        self._btn_y = SCREEN_H - 55
 
     def run(self) -> None:
         import settings as _s
@@ -2638,7 +2657,7 @@ class _FirstStartSetup:
                 self._first_draw = False
 
             self.screen.fill(MENU_BG)
-            _draw_animated_bg(self.screen, self._t, count=25, color=ACCENT2)
+            _draw_animated_bg(self.screen, self._t, count=20, color=ACCENT2)
             self._draw_slide(mouse)
             pygame.display.flip()
 
@@ -2660,25 +2679,90 @@ class _FirstStartSetup:
             _s.save_settings()
             return
 
-    def _get_button_area(self):
-        """Return (next_rect, skip_rect, visible_skip) based on current slide."""
-        on_final = self._slide >= len(self.SLIDES)
-        bw, bh = 150, 44
-        gap = 16
-        cy = SCREEN_H - 100
-        next_x = SCREEN_W // 2 + gap // 2
-        skip_x = SCREEN_W // 2 - bw - gap // 2
-        next_rect = pygame.Rect(next_x, cy, bw, bh)
-        skip_rect = pygame.Rect(skip_x, cy, bw, bh)
-        return next_rect, skip_rect, True
+    def _get_button_rects(self):
+        """Return (next_rect, skip_rect)."""
+        next_x = SCREEN_W // 2 + self._btn_gap // 2
+        skip_x = SCREEN_W // 2 - self._btn_w - self._btn_gap // 2
+        next_rect = pygame.Rect(next_x, self._btn_y, self._btn_w, self._btn_h)
+        skip_rect = pygame.Rect(skip_x, self._btn_y, self._btn_w, self._btn_h)
+        return next_rect, skip_rect
 
     def _is_next_clicked(self, pos: tuple) -> bool:
-        r, _, _ = self._get_button_area()
+        r, _ = self._get_button_rects()
         return r.collidepoint(pos)
 
     def _is_skip_clicked(self, pos: tuple) -> bool:
-        _, r, vis = self._get_button_area()
-        return vis and r.collidepoint(pos)
+        _, r = self._get_button_rects()
+        return r.collidepoint(pos)
+
+    def _draw_icon(self, surface: pygame.Surface, icon_type: str, cx: int, y: int, t: float) -> int:
+        """Draw a geometric icon for the wizard. Returns icon height."""
+        color = self.ICON_COLORS.get(icon_type, ACCENT2)
+        pulse = int(4 * math.sin(t * 2.5))
+        c = tuple(min(255, v + pulse) for v in color)
+
+        if icon_type == "racing":
+            # Car shape: body + wheels
+            body_w, body_h = 70, 28
+            body = pygame.Rect(cx - body_w // 2, y, body_w, body_h)
+            pygame.draw.rect(surface, c, body, border_radius=6)
+            pygame.draw.rect(surface, (0, 0, 0, 80), (cx - 20, y + 2, 18, 10), border_radius=3)
+            w1 = pygame.Rect(cx - 28, y + body_h - 4, 14, 8)
+            w2 = pygame.Rect(cx + 14, y + body_h - 4, 14, 8)
+            pygame.draw.ellipse(surface, (80, 80, 80), w1)
+            pygame.draw.ellipse(surface, (80, 80, 80), w2)
+            return body_h + 12
+
+        elif icon_type == "driver":
+            # Steering wheel: circle with spokes
+            r = 24
+            pygame.draw.circle(surface, c, (cx, y + r), r, 3)
+            pygame.draw.line(surface, c, (cx - r, y + r), (cx + r, y + r), 3)
+            pygame.draw.line(surface, c, (cx, y), (cx, y + 2 * r), 3)
+            pygame.draw.circle(surface, c, (cx, y + r), 5)
+            return r * 2 + 8
+
+        elif icon_type == "navigator":
+            # Map: rectangle with pin
+            mw, mh = 50, 38
+            rct = pygame.Rect(cx - mw // 2, y + 10, mw, mh)
+            pygame.draw.rect(surface, c, rct, 2)
+            pygame.draw.line(surface, c, (cx - 12, y + 20), (cx + 12, y + 20), 1)
+            pygame.draw.line(surface, c, (cx, y + 16), (cx, y + 38), 1)
+            pygame.draw.circle(surface, (255, 60, 60), (cx, y + 12), 6)
+            return mh + 20
+
+        elif icon_type == "modes":
+            # Three bars of different heights
+            bw = 16
+            heights = [20, 32, 44]
+            total_w = len(heights) * bw + (len(heights) - 1) * 8
+            x0 = cx - total_w // 2
+            base_y = y + 44
+            for i, h in enumerate(heights):
+                col = tuple(min(255, cc + i * 30) for cc in c)
+                pygame.draw.rect(surface, col, (x0 + i * (bw + 8), base_y - h, bw, h), border_radius=3)
+            return 52
+
+        elif icon_type == "fuel":
+            # Fuel canister shape
+            fw, fh = 32, 44
+            pygame.draw.rect(surface, c, (cx - fw // 2, y + 6, fw, fh), border_radius=4)
+            pygame.draw.rect(surface, c, (cx - 6, y, 12, 10), border_radius=3)
+            pygame.draw.line(surface, (255, 220, 0), (cx - 4, y + 16), (cx + 4, y + 16), 2)
+            pygame.draw.line(surface, (255, 220, 0), (cx - 4, y + 24), (cx + 4, y + 24), 2)
+            pygame.draw.line(surface, (255, 220, 0), (cx - 4, y + 32), (cx + 4, y + 32), 2)
+            return fh + 12
+
+        elif icon_type == "multiplayer":
+            # Two player figures side by side
+            for dx in (-18, 18):
+                pygame.draw.circle(surface, c, (cx + dx, y + 8), 10, 2)
+                pygame.draw.rect(surface, c, (cx + dx - 10, y + 22, 20, 24), border_radius=5)
+                pygame.draw.line(surface, c, (cx + dx, y + 18), (cx + dx, y + 24), 2)
+            return 50
+
+        return 20
 
     def _draw_slide(self, mouse: tuple) -> None:
         cx = SCREEN_W // 2
@@ -2687,25 +2771,21 @@ class _FirstStartSetup:
         if not on_final:
             slide = self.SLIDES[self._slide]
 
-            # Icon
-            icon_char = self.ICONS.get(slide["icon"], "❓")
-            icon_lbl = self._icon_f.render(icon_char, True, ACCENT2)
-            icon_y = 40
-            self.screen.blit(icon_lbl, (cx - icon_lbl.get_width() // 2, icon_y))
+            # Icon (geometric, drawn with pygame primitives)
+            icon_h = self._draw_icon(self.screen, slide["icon"], cx, 50, self._t)
 
             # Title
-            title_y = icon_y + icon_lbl.get_height() + 12
+            title_y = 50 + icon_h + 10
             _draw_title_glow(self.screen, slide["title"], title_y, self._title_f,
-                             ACCENT2, self._t)
+                             self.ICON_COLORS.get(slide["icon"], ACCENT2), self._t)
 
-            # Lines - center vertically
-            line_h = 24
-            blank_h = 10
+            # Lines - compact spacing
+            line_h = 22
+            blank_h = 8
             total_h = 0
             for line in slide["lines"]:
                 total_h += line_h if line else blank_h
-            y_start = (SCREEN_H - total_h - 80) // 2
-            y_start = max(140, y_start)
+            y_start = title_y + 40
 
             y = y_start
             for line in slide["lines"]:
@@ -2725,7 +2805,7 @@ class _FirstStartSetup:
             _draw_title_glow(self.screen, "YOU'RE ALL SET!", 60, self._title_f,
                              GREEN, self._t)
             sub = self._sub_f.render("Choose a name to show other players", True, C_LABEL)
-            inp_y = 150
+            inp_y = 130
             self._inp.rect.centery = inp_y + 26
             self.screen.blit(sub, ((SCREEN_W - sub.get_width()) // 2, inp_y - 24))
             self._inp.draw(self.screen)
@@ -2734,15 +2814,16 @@ class _FirstStartSetup:
         total = len(self.SLIDES) + 1
         dot_r, dot_gap = 5, 14
         dx = cx - (total - 1) * dot_gap // 2
-        dot_y = SCREEN_H - 60
+        dot_y = self._btn_y - 22
         for i in range(total):
             color = ACCENT if i == self._slide else (60, 70, 100)
             pygame.draw.circle(self.screen, color, (dx + i * dot_gap, dot_y), dot_r)
 
         # Buttons
-        next_rect, skip_rect, show_skip = self._get_button_area()
+        next_rect, skip_rect = self._get_button_rects()
         next_hover = next_rect.collidepoint(mouse)
         skip_hover = skip_rect.collidepoint(mouse)
+        show_skip = True
 
         # Next button
         next_bg = (30, 70, 30) if next_hover else (25, 40, 70)

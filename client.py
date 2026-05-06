@@ -24,7 +24,7 @@ from walls       import WallSystem
 from hud         import HUD
 from entities    import (FuelCanister, BoostPad, OilSlick, ItemBox,
                            GreenBoomerang, RedBoomerang,
-                           EntityParticleSystem, PLAYER_HOST, PLAYER_CLIENT)
+                           ParticleSystem, PLAYER_HOST, PLAYER_CLIENT)
 from particles   import ParticleSystem
 from props       import PropManager
 from net         import ClientConnection
@@ -91,7 +91,7 @@ class ClientGame:
         self.oils:      list[OilSlick]     = []
         self.item_boxes: list[ItemBox]     = []
         self.boomerangs: list              = []   # GreenBoomerang | RedBoomerang
-        self.entity_particles = EntityParticleSystem()
+        self.entity_particles = ParticleSystem()
         self._client_inventory: str | None = None   # Inventory from host packet
         self.camera    = Camera()
 
@@ -203,7 +203,7 @@ class ClientGame:
             ItemBox(x, y, box_id=i)
             for i, (x, y) in enumerate(self.track.box_positions())
         ], pvp)
-        self.entity_particles = EntityParticleSystem()
+        self.entity_particles = ParticleSystem()
         self._client_inventory = None
         self.boomerangs = []
         self.hud = HUD()
