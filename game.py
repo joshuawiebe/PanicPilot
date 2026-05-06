@@ -147,6 +147,10 @@ class Game:
         self._shake_decay = 8.0
         self._shake_offset = (0, 0)
 
+        # Item pickup flash state
+        self._item_flash_timer = 0.0
+        self._item_flash_color = (255, 255, 255)
+
     def _regen_grain(self) -> None:
         import random as _r
         self._grain_surf.fill((0, 0, 0, 0))
@@ -383,6 +387,10 @@ class Game:
         if self._grain_timer >= self._grain_interval and self.mode == MODE_PANIC:
             self._regen_grain()
             self._grain_timer = 0.0
+
+        # Decay item pickup flash
+        if self._item_flash_timer > 0:
+            self._item_flash_timer -= dt
 
         self.pings = [p for p in self.pings if p[2] > 0]
         if len(self.pings) > MAX_PINGS:
@@ -642,6 +650,8 @@ class Game:
                 self.particles.emit_pickup(c.x, c.y)
                 if player_id == PLAYER_HOST:
                     self._fuel_flash = 0.5
+                    self._item_flash_timer = 0.25
+                    self._item_flash_color = (80, 255, 80)
                     if _SM:
                         _SM.play_pickup_fuel()
         # Boost pads
@@ -661,8 +671,12 @@ class Game:
             if item and car.inventory is None:
                 car.inventory = item
                 self.entity_particles.emit_boost_sparks(ib.x, ib.y)
-                if player_id == PLAYER_HOST and _SM:
-                    _SM.play_pickup_item()
+                if player_id == PLAYER_HOST:
+                    self._item_flash_timer = 0.3
+                    colors = {"oil": (50, 50, 50), "boomerang": (255, 200, 0), "boost": (255, 100, 0)}
+                    self._item_flash_color = colors.get(item, (200, 200, 255))
+                    if _SM:
+                        _SM.play_pickup_item()
         # Use item (SPACE / use_item flag)
         if use_item and car.inventory is not None:
             self._use_item(car, player_id)
@@ -802,6 +816,10 @@ class Game:
         if self._fuel_flash > 0:
             alpha = int(120 * min(1.0, self._fuel_flash / 0.5))
             self._flash_surf.fill((255, 200, 0, alpha))
+            surface.blit(self._flash_surf, (0, 0))
+        if self._item_flash_timer > 0:
+            alpha = int(150 * min(1.0, self._item_flash_timer / 0.3))
+            self._flash_surf.fill((*self._item_flash_color, alpha))
             surface.blit(self._flash_surf, (0, 0))
         for car in self.cars:
             if self.mode != MODE_PVP and car is self.cars[1]:
