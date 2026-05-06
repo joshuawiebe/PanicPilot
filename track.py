@@ -389,9 +389,13 @@ class TrackTile:
         pygame.draw.line(s, YELLOW, (0, ry),      (T, ry),      3)
         pygame.draw.line(s, YELLOW, (0, ry + rh), (T, ry + rh), 3)
         try:
-            font = pygame.font.SysFont("Arial", 52, bold=True)
+            # Scale font to fit tile width
+            font_size = min(52, max(20, T // 5))
+            font = pygame.font.SysFont("Arial", font_size, bold=True)
             lbl  = font.render("FINISH", True, YELLOW)
-            s.blit(lbl, (T//2 - lbl.get_width()//2, ry + rh//2 - lbl.get_height()//2))
+            # Only render if it fits
+            if lbl.get_width() < T * 0.9:
+                s.blit(lbl, (T//2 - lbl.get_width()//2, ry + rh//2 - lbl.get_height()//2))
         except Exception:
             pass
 
@@ -404,6 +408,18 @@ class TrackTile:
                 pygame.draw.rect(s, color, (rx + col*tile_sz, r*tile_sz, tile_sz, tile_sz))
         pygame.draw.line(s, YELLOW, (rx,      0), (rx,      T), 3)
         pygame.draw.line(s, YELLOW, (rx + rw, 0), (rx + rw, T), 3)
+        try:
+            # Scale font to fit tile width
+            font_size = min(52, max(16, rw // 4))
+            font = pygame.font.SysFont("Arial", font_size, bold=True)
+            lbl = font.render("FINISH", True, YELLOW)
+            # Rotate text for vertical layout
+            rotated = pygame.transform.rotate(lbl, 90)
+            # Only render if it fits
+            if rotated.get_width() < T * 0.9:
+                s.blit(rotated, (rx + rw//2 - rotated.get_width()//2, T//2 - rotated.get_height()//2))
+        except Exception:
+            pass
 
     def _draw_curve(self, s, T, c):
         px, py = _PIVOT[self.tile_type]
