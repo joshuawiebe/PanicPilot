@@ -270,7 +270,9 @@ class Game:
                     self._return_to_menu = True
                 # Pause menu shortcuts
                 elif self._paused:
-                    if event.key == pygame.K_l:
+                    if event.key == pygame.K_s:
+                        self._open_pause_settings()
+                    elif event.key == pygame.K_l:
                         self._do_return_to_lobby()
                     elif event.key == pygame.K_q:
                         self.running = False
@@ -288,6 +290,8 @@ class Game:
                 break
         if action == "resume":
             self._paused = False
+        elif action == "settings":
+            self._open_pause_settings()
         elif action == "lobby":
             self._do_return_to_lobby()
         elif action == "quit":
@@ -299,6 +303,15 @@ class Game:
         self._lobby_initiator = "self"
         self._paused = False
         self.running = False
+
+    def _open_pause_settings(self) -> None:
+        """Shows settings panel while game is paused."""
+        import settings as _s
+        if _main_mod is None:
+            return
+        settings_scene = _main_mod.SettingsScene(self.screen)
+        settings_scene.run()
+        # Game stays paused when returning
 
     def _on_keydown(self, event) -> None:
         pass
@@ -965,6 +978,7 @@ class Game:
         bw, bh, gap = 300, 52, 14
         labels = [
             ("resume", "[P/ESC]  Resume", (40, 90, 40)),
+            ("settings", "[S]      Settings", (40, 60, 120)),
             ("lobby", "[L]      Back to Lobby", (40, 60, 120)),
             ("quit", "[Q]      Quit Game", (90, 30, 30)),
         ]

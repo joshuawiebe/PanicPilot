@@ -337,6 +337,8 @@ class ClientGame:
                     elif event.key == pygame.K_n and self._pending_mode_request is not None:
                         self._net.send_mode_change_deny()
                         self._pending_mode_request = None
+                    elif self._paused and event.key == pygame.K_s:
+                        self._open_pause_settings()
                     elif self._paused and event.key == pygame.K_l:
                         self._do_return_to_lobby()
                     elif self._paused and event.key == pygame.K_q:
@@ -686,10 +688,18 @@ class ClientGame:
         self._paused          = False
         self.running          = False
 
+    def _open_pause_settings(self) -> None:
+        """Shows settings panel while game is paused."""
+        import main as _main_mod
+        settings_scene = _main_mod.SettingsScene(self.screen)
+        settings_scene.run()
+        # Game stays paused when returning
+
     def _handle_pause_click(self, pos: tuple) -> None:
         for key, rect in self._pause_btn_rects.items():
             if rect.collidepoint(pos):
                 if key == "resume": self._paused = False
+                elif key == "settings": self._open_pause_settings()
                 elif key == "lobby": self._do_return_to_lobby()
                 elif key == "quit":  self.running = False
                 return
@@ -733,6 +743,7 @@ class ClientGame:
         bw, bh, gap = 300, 52, 14
         labels = [
             ("resume", "[P/ESC]  Resume",        (40, 90, 40)),
+            ("settings", "[S]      Settings",      (40, 60, 120)),
             ("lobby",  "[L]      Back to Lobby",  (40, 60, 120)),
             ("quit",   "[Q]      Quit Game",       (90, 30, 30)),
         ]
