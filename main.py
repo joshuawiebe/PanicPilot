@@ -83,41 +83,101 @@ CLASS_COLORS = {
 }
 
 
-def _draw_class_icon(surface: pygame.Surface, cls: str, rect: pygame.Rect, color: tuple) -> None:
-    """Draw a detailed geometric icon for the class without relying on system fonts."""
+def _draw_class_icon(surface: pygame.Surface, cls: str, rect: pygame.Rect, color: tuple, t: float = 0.0) -> None:
+    """Draw a detailed geometric icon for the class with animated pulse effects."""
     cx, cy = rect.centerx, rect.centery
     w, h = rect.width, rect.height
+    pulse = math.sin(t * 3.0) * 0.15 + 0.85
+    glow_color = tuple(min(255, int(c * pulse)) for c in color)
+
     if cls == "balanced":
-        # Diamond with inner cross and corner dots
-        pts = [(cx, cy - h//3), (cx + w//3, cy), (cx, cy + h//3), (cx - w//3, cy)]
-        pygame.draw.polygon(surface, color, pts, 2)
-        pygame.draw.line(surface, color, (cx, cy - h//4), (cx, cy + h//4), 2)
-        pygame.draw.line(surface, color, (cx - w//5, cy), (cx + w//5, cy), 2)
-        pygame.draw.circle(surface, color, (cx, cy), 3)
-        for dx, dy in [(-w//3, -h//3), (w//3, -h//3), (-w//3, h//3), (w//3, h//3)]:
-            pygame.draw.circle(surface, color, (cx + dx//2, cy + dy//2), 1)
-    elif cls == "speedster":
-        # Triple chevron arrows with trail lines
+        # Shield with speed stripes and central dot
+        # Outer shield
+        pts = [(cx, cy - h // 3),
+               (cx + w // 2, cy - h // 4),
+               (cx + w // 2, cy + h // 5),
+               (cx, cy + h // 3),
+               (cx - w // 2, cy + h // 5),
+               (cx - w // 2, cy - h // 4)]
+        pygame.draw.polygon(surface, glow_color, pts, 2)
+        # Inner V-stripe
+        stripe = [(cx, cy - h // 5),
+                  (cx + w // 4, cy),
+                  (cx, cy + h // 6),
+                  (cx - w // 4, cy)]
+        pygame.draw.polygon(surface, glow_color, stripe, 1)
+        # Speed lines
         for i in range(3):
-            offset = (i - 1) * 10
-            pts = [(cx + offset - 4, cy - h//3),
-                   (cx + offset + w//3, cy),
-                   (cx + offset - 4, cy + h//3)]
-            pygame.draw.polygon(surface, color, pts, 2 if i == 1 else 1)
-        pygame.draw.line(surface, color, (cx - w//3, cy - h//4), (cx - w//3 - 6, cy - h//4), 1)
-        pygame.draw.line(surface, color, (cx - w//3, cy + h//4), (cx - w//3 - 6, cy + h//4), 1)
+            y_off = cy - h // 5 + i * h // 5
+            x_len = w // 6 - i * 2
+            pygame.draw.line(surface, glow_color,
+                             (cx - x_len, y_off), (cx - 4, y_off), 1)
+            pygame.draw.line(surface, glow_color,
+                             (cx + 4, y_off), (cx + x_len, y_off), 1)
+        # Center dot with pulse ring
+        r = max(2, int(3 * pulse))
+        pygame.draw.circle(surface, glow_color, (cx, cy), r)
+        pygame.draw.circle(surface, (*color, int(80 * pulse)), (cx, cy), r + 3, 1)
+
+    elif cls == "speedster":
+        # Forward arrow with speed trails and chevrons
+        # Main arrow body
+        body = [(cx - w // 4, cy),
+                (cx - w // 8, cy - h // 3),
+                (cx + w // 2, cy),
+                (cx - w // 8, cy + h // 3)]
+        pygame.draw.polygon(surface, glow_color, body, 2)
+        # Inner arrow fill
+        inner = [(cx - w // 6, cy),
+                 (cx, cy - h // 5),
+                 (cx + w // 4, cy),
+                 (cx, cy + h // 5)]
+        pygame.draw.polygon(surface, (*color, int(40 * pulse)), inner)
+        # Speed trail lines
+        for i in range(3):
+            y_off = cy - h // 4 + i * h // 4
+            x_start = cx - w // 3 - i * 4
+            x_end = cx - w // 4 - i * 3
+            pygame.draw.line(surface, glow_color, (x_start, y_off), (x_end, y_off), 1)
+        # Chevron accents
+        for i in range(2):
+            offset = -w // 5 + i * 6
+            chev = [(cx + offset, cy - h // 5),
+                    (cx + offset + 6, cy),
+                    (cx + offset, cy + h // 5)]
+            pygame.draw.polygon(surface, (*color, int(60 * pulse)), chev, 1)
+        # Glow tip
+        pygame.draw.circle(surface, glow_color, (cx + w // 2, cy), max(2, int(3 * pulse)))
+
     elif cls == "tank":
-        # Shield shape with inner diamond and bolts
-        pts = [(cx - w//3, cy - h//3),
-               (cx + w//3, cy - h//3),
-               (cx + w//3, cy + h//6),
-               (cx, cy + h//3),
-               (cx - w//3, cy + h//6)]
-        pygame.draw.polygon(surface, color, pts, 2)
-        inner = [(cx, cy - h//5), (cx + w//5, cy), (cx, cy + h//5), (cx - w//5, cy)]
-        pygame.draw.polygon(surface, color, inner, 1)
-        for bx, by in [(cx - w//3, cy - h//3), (cx + w//3, cy - h//3)]:
-            pygame.draw.circle(surface, color, (bx, by), 2)
+        # Heavy armor plate with bolts and cross-bracing
+        # Outer hex plate
+        pts = [(cx - w // 3, cy - h // 3),
+               (cx + w // 3, cy - h // 3),
+               (cx + w // 2, cy),
+               (cx + w // 3, cy + h // 3),
+               (cx - w // 3, cy + h // 3),
+               (cx - w // 2, cy)]
+        pygame.draw.polygon(surface, glow_color, pts, 2)
+        # Inner diamond reinforcement
+        diamond = [(cx, cy - h // 4),
+                   (cx + w // 4, cy),
+                   (cx, cy + h // 4),
+                   (cx - w // 4, cy)]
+        pygame.draw.polygon(surface, (*color, int(50 * pulse)), diamond, 1)
+        # Cross-bracing lines
+        pygame.draw.line(surface, (*color, int(70 * pulse)),
+                         (cx - w // 4, cy - h // 4), (cx + w // 4, cy + h // 4), 1)
+        pygame.draw.line(surface, (*color, int(70 * pulse)),
+                         (cx + w // 4, cy - h // 4), (cx - w // 4, cy + h // 4), 1)
+        # Armor bolts
+        bolt_r = max(1, int(2 * pulse))
+        for bx, by in [(cx - w // 3, cy - h // 3), (cx + w // 3, cy - h // 3),
+                       (cx - w // 3, cy + h // 3), (cx + w // 3, cy + h // 3)]:
+            pygame.draw.circle(surface, glow_color, (bx, by), bolt_r)
+            pygame.draw.circle(surface, (*color, int(100 * pulse)), (bx, by), bolt_r + 1, 1)
+        # Heavy center rivet
+        pygame.draw.circle(surface, glow_color, (cx, cy), max(3, int(4 * pulse)), 2)
     else:
         pygame.draw.circle(surface, color, (cx, cy), 8, 2)
 CLASS_DESCRIPTIONS = {
@@ -495,7 +555,8 @@ class ClassPicker:
     def draw(self, surface: pygame.Surface,
              locked_classes: dict | None = None,
              show_coop_info: bool = False,
-             mouse: tuple | None = None) -> None:
+             mouse: tuple | None = None,
+             t: float = 0.0) -> None:
         """
         locked_classes  - {label: class_name} marker (only useful in PvP)
         show_coop_info  - shows coop hint below tiles (only modes 1/2
@@ -549,7 +610,7 @@ class ClassPicker:
 
             cs   = CAR_CLASSES[cls]
             icon_rect = pygame.Rect(draw_rect.x + 6, draw_rect.y + 12, 32, 100)
-            _draw_class_icon(surface, cls, icon_rect, col if active else (60, 75, 100))
+            _draw_class_icon(surface, cls, icon_rect, col if active else (60, 75, 100), t)
 
             # Name
             name = self._fn.render(cs["display"], True,
@@ -728,7 +789,7 @@ class SoloClassPicker:
             _draw_title_glow(self.screen, "SELECT VEHICLE", 52, self._title_f,
                              GREEN, self._t)
             # Solo: show_coop_info always False
-            self._picker.draw(self.screen, show_coop_info=False, mouse=mouse)
+            self._picker.draw(self.screen, show_coop_info=False, mouse=mouse, t=self._t)
             self._slider.draw(self.screen)
             spd_lbl, spd_val = self.SPEED_OPTIONS[self._speed_idx]
             orig = self._btn_speed.label
@@ -1555,7 +1616,7 @@ class HostLobby:
         self._picker.draw(self.screen,
                           locked_classes=locked,
                           show_coop_info=coop_info,
-                          mouse=mouse)
+                          mouse=mouse, t=self._t)
 
         # Status line – distinguishes TCP-open vs. fully handshaked
         if self._client_handshaked:
@@ -1909,7 +1970,7 @@ class ClientLobby:
                   else {})
         self._picker.draw(self.screen,
                           locked_classes=locked,
-                           show_coop_info=False, mouse=mouse)  # Client does not show coop box
+                           show_coop_info=False, mouse=mouse, t=self._t)  # Client does not show coop box
 
         # ── Connection Status ────────────────────────────────────────────────
         since = self._t - self._last_update
