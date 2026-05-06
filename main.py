@@ -722,6 +722,8 @@ class HostSetupMenu:
                              2: "Panic Pilot  - fog, navigator pings",
                              3: "PvP Racing  - two cars, one winner"}
         self._mode_colors = {1: (100, 180, 255), 2: ACCENT, 3: ACCENT2}
+        self._mode_names  = {1: "Split Control", 2: "Panic Pilot", 3: "PvP Racing"}
+        self._mode_flash  = 0.0  # Flash timer for mode change feedback
         y0 = SCREEN_H // 2 + 100
         self._btn_speed = Button(cx, y0,       "Speed")
         self._btn_mode  = Button(cx, y0 + BTN_H + BTN_GAP,  "Switch Mode")
@@ -748,6 +750,7 @@ class HostSetupMenu:
                     self._speed_idx = (self._speed_idx + 1) % len(self.SPEED_OPTIONS)
                 if self._btn_mode.is_clicked(event) and not client_connected:
                     self._mode_idx  = (self._mode_idx  + 1) % len(self._modes)
+                    self._mode_flash = 0.3  # Flash for 300ms
                 if self._btn_lobby.is_clicked(event):
                     _, scale = self.SPEED_OPTIONS[self._speed_idx]
                     return self._modes[self._mode_idx], self._slider.value, scale
@@ -768,6 +771,7 @@ class HostSetupMenu:
             self.screen.blit(ip_hint, ((SCREEN_W - ip_hint.get_width()) // 2, 158))
             self.screen.blit(ip_val, box)
             self._slider.draw(self.screen)
+            self._mode_flash = max(0.0, self._mode_flash - dt)
             cur_mode = self._modes[self._mode_idx]
             m_col    = self._mode_colors.get(cur_mode, C_LABEL)
             m_lbl    = self._lbl_f.render(self._mode_labels[cur_mode], True, m_col)
@@ -783,7 +787,10 @@ class HostSetupMenu:
             for b in range(1 if spd_val <= 0.7 else 2 if spd_val <= 1.0 else 3):
                 pygame.draw.rect(self.screen, bars_c, (bx + b * (bw + bg), by, bw, bh), border_radius=2)
             self._btn_speed.label = orig
-            self._btn_mode.draw(self.screen, mouse, disabled=client_connected)
+            # Update mode button label with current mode
+            self._btn_mode.label = f"Mode: {self._mode_names[cur_mode]}"
+            mode_override = self._mode_colors[cur_mode] if self._mode_flash > 0 else None
+            self._btn_mode.draw(self.screen, mouse, override_color=mode_override, disabled=client_connected)
             self._btn_lobby.draw(self.screen, mouse)
             self._btn_back.draw(self.screen, mouse)
             pygame.display.flip()
