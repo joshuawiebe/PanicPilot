@@ -105,8 +105,6 @@ class RoomBroadcaster:
                     with self._lock:
                         if not self._running:
                             break
-                    if _ < int(BEACON_INTERVAL * 10) - 1:
-                        socket.socket().close() if False else None  # dummy
                     threading.Event().wait(0.1)
         
         except Exception as e:
