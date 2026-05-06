@@ -290,15 +290,24 @@ class Slider:
         return self._track.left + int(t * self._track.width)
 
     def draw(self, surface: pygame.Surface) -> None:
+        # Label centered above track
+        lbl = self._lbl_f.render(self.label, True, C_LABEL)
+        surface.blit(lbl, (self.cx - lbl.get_width() // 2, self.cy - 28))
+        
+        # Track background
         pygame.draw.rect(surface, (30, 42, 72), self._track, border_radius=4)
+        
+        # Filled portion
         hx = self._handle_x()
         filled = pygame.Rect(self._track.left, self._track.top,
                              hx - self._track.left, 8)
         pygame.draw.rect(surface, ACCENT, filled, border_radius=4)
+        
+        # Handle
         pygame.draw.circle(surface, C_BTN_BORDER, (hx, self.cy), 12)
         pygame.draw.circle(surface, ACCENT,       (hx, self.cy),  8)
-        lbl = self._lbl_f.render(self.label, True, C_LABEL)
-        surface.blit(lbl, (self.cx - self.width // 2, self.cy - 26))
+        
+        # Value right-aligned, vertically centered with handle
         val = self._font.render(str(self.value), True, C_TEXT)
         surface.blit(val, (self.cx + self.width // 2 + 14,
                            self.cy - val.get_height() // 2))
