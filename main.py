@@ -159,7 +159,7 @@ class _Particle:
     def reset(self) -> None:
         self.x = random.uniform(0, SCREEN_W)
         self.y = SCREEN_H + 10
-        self.speed = random.uniform(15, 40)
+        self.speed = random.uniform(5, 15)
         self.size = random.uniform(1, 3)
         self.alpha = random.randint(30, 80)
         self.drift = random.uniform(-8, 8)
@@ -2532,13 +2532,20 @@ class _FirstStartSetup:
         self._key_f = pygame.font.SysFont("Courier", 15, bold=True)
 
         self._slide = 0
-        self._inp = TextInput(cx, SCREEN_H // 2 + 40, "Enter your display name")
+        import string
+        self._inp = TextInput(cx, SCREEN_H // 2 + 40, "Enter your display name",
+                              allowed_chars=string.ascii_letters + string.digits + " ._-",
+                              max_len=20)
         self._inp.active = True
 
-        self._btn_next = Button(SCREEN_W // 2 + 100, SCREEN_H - 100,
-                                "  NEXT  >>  ", w=160, h=46, accent=ACCENT)
-        self._btn_skip = Button(SCREEN_W // 2 - 100, SCREEN_H - 100,
-                                "  SKIP  ", w=160, h=46)
+        # Buttons positioned together, centered, with fixed spacing
+        btn_y = SCREEN_H - 80
+        bw, bh = 160, 46
+        gap = 20
+        self._btn_next = Button(cx + bw // 2 + gap // 2, btn_y,
+                                "  NEXT  >>  ", w=bw, h=bh, accent=ACCENT)
+        self._btn_skip = Button(cx - bw // 2 - gap // 2, btn_y,
+                                "  SKIP TUTORIAL  ", w=bw, h=bh)
 
     def run(self) -> None:
         import settings as _s
@@ -2555,30 +2562,39 @@ class _FirstStartSetup:
                 self._inp.handle_event(event)
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_RIGHT or event.key == pygame.K_RETURN:
-                        if self._slide < len(self.SLIDES):
-                            self._slide += 1
-                        elif self._inp.text.strip():
-                            _s.USERNAME = self._inp.text.strip()
-                            _s.save_settings()
-                            return
+                        self._advance()
                     elif event.key == pygame.K_LEFT:
                         if self._slide > 0:
                             self._slide -= 1
                 if self._btn_next.is_clicked(event):
-                    if self._slide < len(self.SLIDES):
-                        self._slide += 1
-                    elif self._inp.text.strip():
-                        _s.USERNAME = self._inp.text.strip()
-                        _s.save_settings()
-                        return
+                    self._advance()
                 if self._btn_skip.is_clicked(event):
-                    if self._slide > 0:
-                        self._slide -= 1
+                    self._skip_to_name()
 
             self.screen.fill(MENU_BG)
             _draw_bg(self.screen, self._t)
             self._draw_slide(mouse)
             pygame.display.flip()
+
+    def _advance(self) -> None:
+        import settings as _s
+        if self._slide < len(self.SLIDES):
+            self._slide += 1
+        elif self._inp.text.strip():
+            _s.USERNAME = self._inp.text.strip()
+            _s.save_settings()
+            return
+
+    def _skip_to_name(self) -> None:
+        import settings as _s
+        if self._slide == 0:
+            self._slide = len(self.SLIDES)
+        elif self._slide < len(self.SLIDES):
+            self._slide += 1
+        elif self._inp.text.strip():
+            _s.USERNAME = self._inp.text.strip()
+            _s.save_settings()
+            return
 
     def _draw_slide(self, mouse: tuple) -> None:
         global _particles
@@ -2586,11 +2602,26 @@ class _FirstStartSetup:
         cx = SCREEN_W // 2
         self.screen.fill(MENU_BG)
         _draw_animated_bg(self.screen, self._t, count=25, color=ACCENT2)
+
         if self._slide < len(self.SLIDES):
             slide = self.SLIDES[self._slide]
-            _draw_title_glow(self.screen, slide["title"], 60, self._title_f,
+            title_y = 80
+            _draw_title_glow(self.screen, slide["title"], title_y, self._title_f,
                              ACCENT2, self._t)
-            y = 140
+
+            # Count lines to calculate total height for vertical centering
+            line_h = 26
+            blank_h = 12
+            total_h = 0
+            for line in slide["lines"]:
+                if line:
+                    total_h += line_h
+                else:
+                    total_h += blank_h
+            y_start = (SCREEN_H - total_h) // 2
+            y_start = max(120, min(y_start, SCREEN_H - 200))
+
+            y = y_start
             for line in slide["lines"]:
                 if line.startswith("  "):
                     txt = line.strip()
@@ -2599,31 +2630,35 @@ class _FirstStartSetup:
                 elif line:
                     lbl = self._sub_f.render(line, True, C_LABEL)
                 else:
-                    y += 12
+                    y += blank_h
                     continue
                 self.screen.blit(lbl, ((SCREEN_W - lbl.get_width()) // 2, y))
-                y += 26
+                y += line_h
         else:
-            _draw_title_glow(self.screen, "YOU'RE ALL SET!", 60, self._title_f,
+            _draw_title_glow(self.screen, "YOU'RE ALL SET!", 80, self._title_f,
                              GREEN, self._t)
             sub = self._sub_f.render("Choose a name to show other players", True, C_LABEL)
-            self.screen.blit(sub, ((SCREEN_W - sub.get_width()) // 2, 120))
+            self.screen.blit(sub, ((SCREEN_W - sub.get_width()) // 2, 140))
             self._inp.draw(self.screen)
 
         # Slide dots
         total = len(self.SLIDES) + 1
         dot_r, dot_gap = 5, 16
         dx = cx - (total - 1) * dot_gap // 2
+        dot_y = SCREEN_H - 45
         for i in range(total):
             color = ACCENT if i == self._slide else (60, 70, 100)
-            pygame.draw.circle(self.screen, color, (dx + i * dot_gap, SCREEN_H - 60), dot_r)
+            pygame.draw.circle(self.screen, color, (dx + i * dot_gap, dot_y), dot_r)
 
-        self._btn_next.draw(self.screen, mouse)
+        # Update button labels
         if self._slide >= len(self.SLIDES):
             self._btn_next.label = "  START  \u25B6  "
+            self._btn_skip.label = "  BACK  "
+
+        self._btn_next.draw(self.screen, mouse)
         if self._slide > 0:
             self._btn_skip.draw(self.screen, mouse)
-            back_lbl = self._hint_f.render("\u25C0  Back", True, (100, 110, 130))
+            back_lbl = self._hint_f.render("\u25C0", True, (100, 110, 130))
             self.screen.blit(back_lbl,
                              (self._btn_skip.rect.centerx - back_lbl.get_width() // 2,
                               self._btn_skip.rect.centery - back_lbl.get_height() // 2))

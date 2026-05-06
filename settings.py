@@ -61,15 +61,66 @@ SFX_VOLUME:   int = 80   # Effects volume (0-100)
 
 # ── Settings persistence ──────────────────────────────────────────────────────
 
-import os as _os, json as _json
+import os as _os
+import json as _json
+import sys as _sys
 
-_SETTINGS_FILE = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
-                               "user_settings.json")
+
+def _get_settings_path() -> str:
+    """Return OS-specific user config directory for user_settings.json.
+
+    Works correctly in frozen PyInstaller builds:
+      - Windows : %APPDATA%\\PanicPilot\\user_settings.json
+      - macOS   : ~/Library/Application Support/PanicPilot/user_settings.json
+      - Linux   : ~/.config/PanicPilot/user_settings.json
+    """
+    app_name = "PanicPilot"
+
+    if _sys.platform.startswith("win"):
+        base = _os.environ.get("APPDATA", _os.path.expanduser("~"))
+        cfg_dir = _os.path.join(base, app_name)
+    elif _sys.platform == "darwin":
+        cfg_dir = _os.path.expanduser(
+            _os.path.join("~", "Library", "Application Support", app_name)
+        )
+    else:
+        cfg_dir = _os.path.expanduser(
+            _os.path.join("~", ".config", app_name)
+        )
+
+    _os.makedirs(cfg_dir, exist_ok=True)
+    return _os.path.join(cfg_dir, "user_settings.json")
+
+
+_SETTINGS_FILE = _get_settings_path()
+
+# Fallback to the old location (next to the script) for migration
+_OLD_SETTINGS_FILE = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                                   "user_settings.json")
+
 _PERSIST_KEYS  = ("FULLSCREEN", "MUSIC_VOLUME", "SFX_VOLUME", "DISPLAY_W", "DISPLAY_H", "USERNAME")
+
+
+def _migrate_old_settings() -> None:
+    """One-time migration: move settings from old location to new config dir."""
+    if _os.path.exists(_SETTINGS_FILE):
+        return  # Already migrated or already at new location
+    if not _os.path.exists(_OLD_SETTINGS_FILE):
+        return  # No old file to migrate
+    try:
+        with open(_OLD_SETTINGS_FILE, "r", encoding="utf-8") as src:
+            data = _json.load(src)
+        with open(_SETTINGS_FILE, "w", encoding="utf-8") as dst:
+            _json.dump(data, dst, indent=2)
+        # Delete old file so it doesn't confuse things
+        _os.remove(_OLD_SETTINGS_FILE)
+    except (OSError, _json.JSONDecodeError):
+        pass  # Migration failed silently; use defaults
 
 
 def load_settings() -> None:
     """Load persisted user settings from user_settings.json into this module."""
+    _migrate_old_settings()
     import sys
     mod = sys.modules[__name__]
     try:
