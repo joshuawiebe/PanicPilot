@@ -397,7 +397,7 @@ class Slider:
         
         # Value right-aligned, vertically centered with handle
         val = self._font.render(str(self.value), True, C_TEXT)
-        surface.blit(val, (self.cx + self.width // 2 + 14,
+        surface.blit(val, (self.cx + self.width // 2 + 8,
                            self.cy - val.get_height() // 2))
 
     def handle_event(self, event: pygame.event.Event) -> None:
@@ -2069,9 +2069,11 @@ class SettingsScene:
         init_sfx   = getattr(_s, "SFX_VOLUME",   80)
         init_username = getattr(_s, "USERNAME", "")
 
-        self._sl_music = Slider(cx, SCREEN_H // 2 - 120,
+        # Shift slightly left to compensate for value text extending right
+        sl_cx = cx - 10
+        self._sl_music = Slider(sl_cx, SCREEN_H // 2 - 120,
                                 "Music Volume", 0, 100, init_music)
-        self._sl_sfx   = Slider(cx, SCREEN_H // 2 - 30,
+        self._sl_sfx   = Slider(sl_cx, SCREEN_H // 2 - 30,
                                 "Effects Volume", 0, 100, init_sfx)
 
         import string
