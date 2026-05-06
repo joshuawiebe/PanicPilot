@@ -45,6 +45,16 @@ PanicPilot uses a host-client architecture over TCP for game data and UDP broadc
 
 ```
 PanicPilot/
+├── .github/
+│   ├── workflows/
+│   │   └── release.yml     # Automated release pipeline
+│   ├── instructions/       # Development guidelines
+│   └── skills/             # Skill templates for code generation
+├── assets/
+│   └── sounds/             # Custom audio files (optional, procedural fallback)
+├── .gitignore
+├── .python-version
+├── LICENSE
 ├── main.py                 # Entry point, menus, lobbies, UI components
 ├── game.py                 # Host-side game logic and rendering
 ├── client.py               # Client-side game logic and rendering
@@ -68,13 +78,7 @@ PanicPilot/
 ├── settings.py             # User settings (volume, username, fullscreen)
 ├── requirements.txt        # Python dependencies
 ├── panicpilot.spec         # PyInstaller build specification
-├── .github/
-│   ├── workflows/
-│   │   └── release.yml     # Automated release pipeline
-│   ├── instructions/       # Development guidelines
-│   └── skills/             # Skill templates for code generation
-└── assets/
-    └── sounds/             # Custom audio files (optional, procedural fallback)
+└── test_task1.py           # Unit tests
 ```
 
 ## Controls
