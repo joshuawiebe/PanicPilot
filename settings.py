@@ -63,31 +63,18 @@ SFX_VOLUME:   int = 80   # Effects volume (0-100)
 
 import os as _os
 import json as _json
-import sys as _sys
+import tempfile as _tempfile
 
 
 def _get_settings_path() -> str:
-    """Return OS-specific user config directory for user_settings.json.
+    """Return temp-directory path for user_settings.json.
 
     Works correctly in frozen PyInstaller builds:
-      - Windows : %APPDATA%\\PanicPilot\\user_settings.json
-      - macOS   : ~/Library/Application Support/PanicPilot/user_settings.json
-      - Linux   : ~/.config/PanicPilot/user_settings.json
+      - Windows : %TEMP%\\PanicPilot\\user_settings.json
+      - macOS   : /tmp/PanicPilot/user_settings.json
+      - Linux   : /tmp/PanicPilot/user_settings.json
     """
-    app_name = "PanicPilot"
-
-    if _sys.platform.startswith("win"):
-        base = _os.environ.get("APPDATA", _os.path.expanduser("~"))
-        cfg_dir = _os.path.join(base, app_name)
-    elif _sys.platform == "darwin":
-        cfg_dir = _os.path.expanduser(
-            _os.path.join("~", "Library", "Application Support", app_name)
-        )
-    else:
-        cfg_dir = _os.path.expanduser(
-            _os.path.join("~", ".config", app_name)
-        )
-
+    cfg_dir = _os.path.join(_tempfile.gettempdir(), "PanicPilot")
     _os.makedirs(cfg_dir, exist_ok=True)
     return _os.path.join(cfg_dir, "user_settings.json")
 

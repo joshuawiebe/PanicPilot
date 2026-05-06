@@ -448,7 +448,7 @@ class TextInput:
 
 class ClassPicker:
     """
-    Three vehicle classes as clickable glow tiles.
+    Three vehicle classes as clickable glow tiles with hover animation.
 
     pvp_mode  = True  -> PvP layout: client class is shown as marker
     pvp_mode  = False -> Coop/Solo: no client marker, optional info line below
@@ -470,6 +470,7 @@ class ClassPicker:
                         cy - self.TILE_H // 2, self.TILE_W, self.TILE_H)
             for i in range(len(self.CLASSES))
         ]
+        self._hover_scale = [0.0, 0.0, 0.0]
         self._fn = pygame.font.SysFont("Arial", 20, bold=True)
         self._fi = pygame.font.SysFont("Arial", 26, bold=True)
         self._fd = pygame.font.SysFont("Arial", 12)
@@ -484,11 +485,13 @@ class ClassPicker:
 
     def draw(self, surface: pygame.Surface,
              locked_classes: dict | None = None,
-             show_coop_info: bool = False) -> None:
+             show_coop_info: bool = False,
+             mouse: tuple | None = None) -> None:
         """
         locked_classes  - {label: class_name} marker (only useful in PvP)
         show_coop_info  - shows coop hint below tiles (only modes 1/2
                            AND client actually connected)
+        mouse           - for hover detection; pass mouse.get_pos() from caller
         In pvp_mode=False: client markers are completely suppressed.
         """
         for i, cls in enumerate(self.CLASSES):
@@ -496,24 +499,53 @@ class ClassPicker:
             active = (cls == self.selected)
             col    = CLASS_COLORS.get(cls, WHITE)
 
-            if active:
-                _glow_rect(surface, r, col, layers=3)
+            # Hover detection and smooth animation
+            if mouse:
+                hovered = r.collidepoint(mouse)
+                target = 1.0 if hovered else 0.0
+                self._hover_scale[i] += (target - self._hover_scale[i]) * 0.15
+                hs = self._hover_scale[i]
+            else:
+                hs = 0.0
 
-            bg = (col[0]//7, col[1]//7, col[2]//7) if active else (10, 14, 26)
-            bw = 2 if active else 1
-            bc = col if active else (45, 60, 90)
-            _shadow_rect(surface, r, radius=10)
-            pygame.draw.rect(surface, bg, r, border_radius=10)
-            pygame.draw.rect(surface, bc, r, bw, border_radius=10)
+            # Hover: slight scale-up via rect expansion
+            if hs > 0.01:
+                expand = int(hs * 6)
+                draw_rect = pygame.Rect(r.x - expand, r.y - expand,
+                                        r.w + expand * 2, r.h + expand * 2)
+            else:
+                draw_rect = r
+
+            if active:
+                _glow_rect(surface, draw_rect, col, layers=3)
+
+            # Hover brightening
+            if active:
+                bg = (col[0]//7, col[1]//7, col[2]//7)
+                bw = 2
+                bc = col
+            elif hs > 0.01:
+                b = int(10 + hs * 10)
+                bg = (b, int(b * 1.4), int(b * 2.6))
+                bw = 1
+                bc = (int(45 + hs * 40), int(60 + hs * 40), int(90 + hs * 40))
+            else:
+                bg = (10, 14, 26)
+                bw = 1
+                bc = (45, 60, 90)
+
+            _shadow_rect(surface, draw_rect, radius=10)
+            pygame.draw.rect(surface, bg, draw_rect, border_radius=10)
+            pygame.draw.rect(surface, bc, draw_rect, bw, border_radius=10)
 
             cs   = CAR_CLASSES[cls]
-            icon_rect = pygame.Rect(r.x + 6, r.y + 12, 32, 100)
+            icon_rect = pygame.Rect(draw_rect.x + 6, draw_rect.y + 12, 32, 100)
             _draw_class_icon(surface, cls, icon_rect, col if active else (60, 75, 100))
 
             # Name
             name = self._fn.render(cs["display"], True,
                                    col if active else (90, 110, 150))
-            surface.blit(name, (r.x + 46, r.y + 10))
+            surface.blit(name, (draw_rect.x + 46, draw_rect.y + 10))
 
             # Description - clipped to box width
             desc_text = CLASS_DESCRIPTIONS[cls]
@@ -526,7 +558,7 @@ class ClassPicker:
                                                 C_LABEL if active else (60, 75, 100))
                     if desc_surf.get_width() <= max_desc_w:
                         break
-            surface.blit(desc_surf, (r.x + 46, r.y + 34))
+            surface.blit(desc_surf, (draw_rect.x + 46, draw_rect.y + 34))
 
             stats = [
                 ("Speed", cs["speed_mul"],       (0, 195, 100)),
@@ -534,7 +566,7 @@ class ClassPicker:
                 ("Fuel",  1.0 / cs["fuel_mul"],  ACCENT2),
             ]
             for si, (slbl, val, scol) in enumerate(stats):
-                bx = r.x + 46 + si * 70;  by = r.y + 56
+                bx = draw_rect.x + 46 + si * 70;  by = draw_rect.y + 56
                 sl = self._fs.render(slbl, True,
                                      (130, 145, 170) if active else (50, 60, 80))
                 surface.blit(sl, (bx, by))
@@ -553,8 +585,8 @@ class ClassPicker:
                         tag = self._fs.render(f"<< {lbl_txt}", True,
                                               col if active else GRAY)
                         surface.blit(tag,
-                                     (r.x + r.w - tag.get_width() - 8,
-                                      r.y + r.h - tag.get_height() - 6))
+                                     (draw_rect.x + draw_rect.w - tag.get_width() - 8,
+                                      draw_rect.y + draw_rect.h - tag.get_height() - 6))
 
         # Coop info only when client is actually connected + coop mode
         if show_coop_info and not self.pvp_mode:
@@ -687,7 +719,7 @@ class SoloClassPicker:
             _draw_title_glow(self.screen, "SELECT VEHICLE", 52, self._title_f,
                              GREEN, self._t)
             # Solo: show_coop_info always False
-            self._picker.draw(self.screen, show_coop_info=False)
+            self._picker.draw(self.screen, show_coop_info=False, mouse=mouse)
             self._slider.draw(self.screen)
             spd_lbl, spd_val = self.SPEED_OPTIONS[self._speed_idx]
             orig = self._btn_speed.label
@@ -726,7 +758,16 @@ class HostSetupMenu:
         username = getattr(_s, "USERNAME", "").strip()
         self._room_label = f"{username}'s Room" if username else f"Host ({self._own_ip})"
         cx = SCREEN_W // 2
-        self._slider   = Slider(cx, SCREEN_H // 2 - 40, "Track Length (Tiles)", 10, 50, 20)
+
+        # Vertical layout zones:
+        #   y=72     title (auto)
+        #   y=120    room label
+        #   y=140    IP hint
+        #   y=158    IP box
+        #   y=230    track length slider
+        #   y=330    mode label
+        #   y=400    buttons (stacked)
+        self._slider   = Slider(cx, 240, "Track Length (Tiles)", 10, 50, 20)
         self._modes    = [1, 2, 3]
         self._mode_idx = 0
         self._speed_idx = 1
@@ -736,7 +777,9 @@ class HostSetupMenu:
         self._mode_colors = {1: (100, 180, 255), 2: ACCENT, 3: ACCENT2}
         self._mode_names  = {1: "Split Control", 2: "Panic Pilot", 3: "PvP Racing"}
         self._mode_flash  = 0.0  # Flash timer for mode change feedback
-        y0 = SCREEN_H // 2 + 100
+
+        # Buttons in a vertical stack below mode label
+        y0 = 400
         self._btn_speed = Button(cx, y0,       "Speed")
         self._btn_mode  = Button(cx, y0 + BTN_H + BTN_GAP,  "Switch Mode")
         self._btn_lobby = Button(cx, y0 + 2*(BTN_H+BTN_GAP), "  OPEN LOBBY  ", accent=ACCENT2)
@@ -767,29 +810,40 @@ class HostSetupMenu:
                     _, scale = self.SPEED_OPTIONS[self._speed_idx]
                     return self._modes[self._mode_idx], self._slider.value, scale
                 if self._btn_back.is_clicked(event):  return None
+
             self.screen.fill(MENU_BG)
             _draw_animated_bg(self.screen, self._t, count=20, color=ACCENT2)
             _draw_title_glow(self.screen, "HOST SETTINGS", 72, self._title_f,
                              ACCENT2, self._t)
+
+            # Room label
             room_display = self._lbl_f.render(f"Room: {self._room_label}", True, C_LABEL)
             self.screen.blit(room_display,
                              ((SCREEN_W - room_display.get_width()) // 2, 120))
+
+            # IP address box
             ip_hint = self._ip_lbl.render("Your IP (for the client):", True, C_LABEL)
             ip_val  = self._ip_font.render(f"{self._own_ip}:54321", True, ACCENT)
             box_w = 340
-            box = pygame.Rect((SCREEN_W - box_w) // 2, 156, box_w, 48)
+            box = pygame.Rect((SCREEN_W - box_w) // 2, 158, box_w, 48)
             _shadow_rect(self.screen, box, radius=8)
             pygame.draw.rect(self.screen, (10, 20, 45), box, border_radius=8)
             pygame.draw.rect(self.screen, C_BTN_BORDER, box, 2, border_radius=8)
-            self.screen.blit(ip_hint, ((SCREEN_W - ip_hint.get_width()) // 2, 138))
+            self.screen.blit(ip_hint, ((SCREEN_W - ip_hint.get_width()) // 2, 140))
             self.screen.blit(ip_val, (box.x + (box_w - ip_val.get_width()) // 2,
                                       box.y + (box.h - ip_val.get_height()) // 2))
+
+            # Track length slider
             self._slider.draw(self.screen)
+
+            # Current mode label
             self._mode_flash = max(0.0, self._mode_flash - dt)
             cur_mode = self._modes[self._mode_idx]
             m_col    = self._mode_colors.get(cur_mode, C_LABEL)
             m_lbl    = self._lbl_f.render(self._mode_labels[cur_mode], True, m_col)
-            self.screen.blit(m_lbl, ((SCREEN_W - m_lbl.get_width()) // 2, SCREEN_H // 2 + 46))
+            self.screen.blit(m_lbl, ((SCREEN_W - m_lbl.get_width()) // 2, 345))
+
+            # Speed button with indicator bars
             spd_lbl, spd_val = self.SPEED_OPTIONS[self._speed_idx]
             orig = self._btn_speed.label
             self._btn_speed.label = f"Speed: {spd_lbl}"
@@ -801,10 +855,13 @@ class HostSetupMenu:
             for b in range(1 if spd_val <= 0.7 else 2 if spd_val <= 1.0 else 3):
                 pygame.draw.rect(self.screen, bars_c, (bx + b * (bw + bg), by, bw, bh), border_radius=2)
             self._btn_speed.label = orig
-            # Update mode button label with current mode
+
+            # Mode button
             self._btn_mode.label = f"Mode: {self._mode_names[cur_mode]}"
             mode_override = self._mode_colors[cur_mode] if self._mode_flash > 0 else None
             self._btn_mode.draw(self.screen, mouse, override_color=mode_override, disabled=client_connected)
+
+            # Lobby and Back buttons
             self._btn_lobby.draw(self.screen, mouse)
             self._btn_back.draw(self.screen, mouse)
             pygame.display.flip()
@@ -1488,7 +1545,8 @@ class HostLobby:
         self._picker.pvp_mode = pvp   # update live
         self._picker.draw(self.screen,
                           locked_classes=locked,
-                          show_coop_info=coop_info)
+                          show_coop_info=coop_info,
+                          mouse=mouse)
 
         # Status line – distinguishes TCP-open vs. fully handshaked
         if self._client_handshaked:
@@ -1842,7 +1900,7 @@ class ClientLobby:
                   else {})
         self._picker.draw(self.screen,
                           locked_classes=locked,
-                           show_coop_info=False)  # Client does not show coop box
+                           show_coop_info=False, mouse=mouse)  # Client does not show coop box
 
         # ── Connection Status ────────────────────────────────────────────────
         since = self._t - self._last_update
@@ -2448,6 +2506,15 @@ class InGameSettingsScene:
 class _FirstStartSetup:
     """Multi-slide tutorial shown on first launch."""
 
+    ICONS = {
+        "racing": "🏎",
+        "driver": "🎮",
+        "navigator": "🗺",
+        "modes": "⚡",
+        "fuel": "⛽",
+        "multiplayer": "👥",
+    }
+
     SLIDES = [
         {
             "title": "WELCOME TO PANIC PILOT",
@@ -2526,26 +2593,19 @@ class _FirstStartSetup:
         self.screen = screen
         self._t = 0.0
         cx = SCREEN_W // 2
-        self._title_f = pygame.font.SysFont("Arial", 42, bold=True)
-        self._sub_f = pygame.font.SysFont("Arial", 18)
-        self._hint_f = pygame.font.SysFont("Arial", 14)
-        self._key_f = pygame.font.SysFont("Courier", 15, bold=True)
+        self._title_f = pygame.font.SysFont("Arial", 38, bold=True)
+        self._sub_f = pygame.font.SysFont("Arial", 17)
+        self._hint_f = pygame.font.SysFont("Arial", 13)
+        self._icon_f = pygame.font.SysFont("Arial", 48)
 
         self._slide = 0
+        self._first_draw = True
+
         import string
-        self._inp = TextInput(cx, SCREEN_H // 2 + 40, "Enter your display name",
+        self._inp = TextInput(cx, 0, "Enter your display name",
                               allowed_chars=string.ascii_letters + string.digits + " ._-",
                               max_len=20)
         self._inp.active = True
-
-        # Buttons positioned together, centered, with fixed spacing
-        btn_y = SCREEN_H - 80
-        bw, bh = 160, 46
-        gap = 20
-        self._btn_next = Button(cx + bw // 2 + gap // 2, btn_y,
-                                "  NEXT  >>  ", w=bw, h=bh, accent=ACCENT)
-        self._btn_skip = Button(cx - bw // 2 - gap // 2, btn_y,
-                                "  SKIP TUTORIAL  ", w=bw, h=bh)
 
     def run(self) -> None:
         import settings as _s
@@ -2566,13 +2626,19 @@ class _FirstStartSetup:
                     elif event.key == pygame.K_LEFT:
                         if self._slide > 0:
                             self._slide -= 1
-                if self._btn_next.is_clicked(event):
-                    self._advance()
-                if self._btn_skip.is_clicked(event):
-                    self._skip_to_name()
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if self._is_next_clicked(mouse):
+                        self._advance()
+                    elif self._is_skip_clicked(mouse):
+                        self._skip_to_name()
+
+            if self._first_draw:
+                global _particles
+                _particles = None
+                self._first_draw = False
 
             self.screen.fill(MENU_BG)
-            _draw_bg(self.screen, self._t)
+            _draw_animated_bg(self.screen, self._t, count=25, color=ACCENT2)
             self._draw_slide(mouse)
             pygame.display.flip()
 
@@ -2587,39 +2653,59 @@ class _FirstStartSetup:
 
     def _skip_to_name(self) -> None:
         import settings as _s
-        if self._slide == 0:
+        if self._slide < len(self.SLIDES):
             self._slide = len(self.SLIDES)
-        elif self._slide < len(self.SLIDES):
-            self._slide += 1
         elif self._inp.text.strip():
             _s.USERNAME = self._inp.text.strip()
             _s.save_settings()
             return
 
-    def _draw_slide(self, mouse: tuple) -> None:
-        global _particles
-        _particles = None
-        cx = SCREEN_W // 2
-        self.screen.fill(MENU_BG)
-        _draw_animated_bg(self.screen, self._t, count=25, color=ACCENT2)
+    def _get_button_area(self):
+        """Return (next_rect, skip_rect, visible_skip) based on current slide."""
+        on_final = self._slide >= len(self.SLIDES)
+        bw, bh = 150, 44
+        gap = 16
+        cy = SCREEN_H - 100
+        next_x = SCREEN_W // 2 + gap // 2
+        skip_x = SCREEN_W // 2 - bw - gap // 2
+        next_rect = pygame.Rect(next_x, cy, bw, bh)
+        skip_rect = pygame.Rect(skip_x, cy, bw, bh)
+        return next_rect, skip_rect, True
 
-        if self._slide < len(self.SLIDES):
+    def _is_next_clicked(self, pos: tuple) -> bool:
+        r, _, _ = self._get_button_area()
+        return r.collidepoint(pos)
+
+    def _is_skip_clicked(self, pos: tuple) -> bool:
+        _, r, vis = self._get_button_area()
+        return vis and r.collidepoint(pos)
+
+    def _draw_slide(self, mouse: tuple) -> None:
+        cx = SCREEN_W // 2
+        on_final = self._slide >= len(self.SLIDES)
+
+        if not on_final:
             slide = self.SLIDES[self._slide]
-            title_y = 80
+
+            # Icon
+            icon_char = self.ICONS.get(slide["icon"], "❓")
+            icon_lbl = self._icon_f.render(icon_char, True, ACCENT2)
+            icon_y = 40
+            self.screen.blit(icon_lbl, (cx - icon_lbl.get_width() // 2, icon_y))
+
+            # Title
+            title_y = icon_y + icon_lbl.get_height() + 12
             _draw_title_glow(self.screen, slide["title"], title_y, self._title_f,
                              ACCENT2, self._t)
 
-            # Count lines to calculate total height for vertical centering
-            line_h = 26
-            blank_h = 12
+            # Lines - center vertically
+            line_h = 24
+            blank_h = 10
             total_h = 0
             for line in slide["lines"]:
-                if line:
-                    total_h += line_h
-                else:
-                    total_h += blank_h
-            y_start = (SCREEN_H - total_h) // 2
-            y_start = max(120, min(y_start, SCREEN_H - 200))
+                total_h += line_h if line else blank_h
+            y_start = (SCREEN_H - total_h - 80) // 2
+            y_start = max(140, y_start)
 
             y = y_start
             for line in slide["lines"]:
@@ -2635,33 +2721,51 @@ class _FirstStartSetup:
                 self.screen.blit(lbl, ((SCREEN_W - lbl.get_width()) // 2, y))
                 y += line_h
         else:
-            _draw_title_glow(self.screen, "YOU'RE ALL SET!", 80, self._title_f,
+            # Final slide: name entry
+            _draw_title_glow(self.screen, "YOU'RE ALL SET!", 60, self._title_f,
                              GREEN, self._t)
             sub = self._sub_f.render("Choose a name to show other players", True, C_LABEL)
-            self.screen.blit(sub, ((SCREEN_W - sub.get_width()) // 2, 140))
+            inp_y = 150
+            self._inp.rect.centery = inp_y + 26
+            self.screen.blit(sub, ((SCREEN_W - sub.get_width()) // 2, inp_y - 24))
             self._inp.draw(self.screen)
 
         # Slide dots
         total = len(self.SLIDES) + 1
-        dot_r, dot_gap = 5, 16
+        dot_r, dot_gap = 5, 14
         dx = cx - (total - 1) * dot_gap // 2
-        dot_y = SCREEN_H - 45
+        dot_y = SCREEN_H - 60
         for i in range(total):
             color = ACCENT if i == self._slide else (60, 70, 100)
             pygame.draw.circle(self.screen, color, (dx + i * dot_gap, dot_y), dot_r)
 
-        # Update button labels
-        if self._slide >= len(self.SLIDES):
-            self._btn_next.label = "  START  \u25B6  "
-            self._btn_skip.label = "  BACK  "
+        # Buttons
+        next_rect, skip_rect, show_skip = self._get_button_area()
+        next_hover = next_rect.collidepoint(mouse)
+        skip_hover = skip_rect.collidepoint(mouse)
 
-        self._btn_next.draw(self.screen, mouse)
-        if self._slide > 0:
-            self._btn_skip.draw(self.screen, mouse)
-            back_lbl = self._hint_f.render("\u25C0", True, (100, 110, 130))
-            self.screen.blit(back_lbl,
-                             (self._btn_skip.rect.centerx - back_lbl.get_width() // 2,
-                              self._btn_skip.rect.centery - back_lbl.get_height() // 2))
+        # Next button
+        next_bg = (30, 70, 30) if next_hover else (25, 40, 70)
+        next_border = ACCENT if next_hover else (50, 80, 140)
+        pygame.draw.rect(self.screen, (0, 0, 0, 80), next_rect.move(2, 3), border_radius=8)
+        pygame.draw.rect(self.screen, next_bg, next_rect, border_radius=8)
+        pygame.draw.rect(self.screen, next_border, next_rect, 1, border_radius=8)
+        next_label = "  START  >>  " if on_final else "  NEXT  >>  "
+        next_txt = self._hint_f.render(next_label, True, WHITE if next_hover else (180, 190, 210))
+        self.screen.blit(next_txt, (next_rect.centerx - next_txt.get_width() // 2,
+                                    next_rect.centery - next_txt.get_height() // 2))
+
+        # Skip/Back button
+        if show_skip:
+            skip_bg = (40, 30, 30) if skip_hover else (20, 25, 40)
+            skip_border = (140, 80, 80) if skip_hover else (50, 60, 90)
+            pygame.draw.rect(self.screen, (0, 0, 0, 80), skip_rect.move(2, 3), border_radius=8)
+            pygame.draw.rect(self.screen, skip_bg, skip_rect, border_radius=8)
+            pygame.draw.rect(self.screen, skip_border, skip_rect, 1, border_radius=8)
+            skip_label = "  BACK  " if on_final else "  SKIP  >>  "
+            skip_txt = self._hint_f.render(skip_label, True, (180, 190, 210) if skip_hover else (100, 110, 130))
+            self.screen.blit(skip_txt, (skip_rect.centerx - skip_txt.get_width() // 2,
+                                        skip_rect.centery - skip_txt.get_height() // 2))
 
 
 # ── Entry Point ────────────────────────────────────────────────────────────────
