@@ -549,7 +549,8 @@ class Game:
         if self.mode == MODE_PVP:
             self._update_camera_pvp(dt)
         else:
-            self.camera.update(s0.x, s0.y, dt)
+            speed_zoom = max(0.5, min(1.2, 1.2 - abs(s0.speed) / 2500))
+            self.camera.update(s0.x, s0.y, dt, target_zoom=speed_zoom)
 
         # ── Partikel ─────────────────────────────────────────────────────────
         rad = math.radians(s0.angle)

@@ -42,11 +42,15 @@ class Camera:
 
     # ─── Update ──────────────────────────────────────────────────────────────
 
-    def update(self, target_x: float, target_y: float, dt: float) -> None:
+    def update(self, target_x: float, target_y: float, dt: float,
+               target_zoom: float | None = None) -> None:
         """Exponentially damped camera tracking."""
         t = min(1.0, self.SMOOTH * dt)
         self.x += (target_x - self.x) * t
         self.y += (target_y - self.y) * t
+        if target_zoom is not None:
+            zt = min(1.0, 4.0 * dt)
+            self.zoom += (target_zoom - self.zoom) * zt
 
     def snap(self, target_x: float, target_y: float) -> None:
         """Immediate camera positioning (reset / initialization)."""
