@@ -767,7 +767,7 @@ class HostSetupMenu:
         #   y=230    track length slider
         #   y=330    mode label
         #   y=400    buttons (stacked)
-        self._slider   = Slider(cx, 240, "Track Length (Tiles)", 10, 50, 20)
+        self._slider   = Slider(cx, SCREEN_H // 2 - 40, "Track Length (Tiles)", 10, 50, 20)
         self._modes    = [1, 2, 3]
         self._mode_idx = 0
         self._speed_idx = 1
@@ -778,8 +778,8 @@ class HostSetupMenu:
         self._mode_names  = {1: "Split Control", 2: "Panic Pilot", 3: "PvP Racing"}
         self._mode_flash  = 0.0  # Flash timer for mode change feedback
 
-        # Buttons in a vertical stack below mode label
-        y0 = 400
+        # Buttons stacked in lower half
+        y0 = SCREEN_H // 2 + 100
         self._btn_speed = Button(cx, y0,       "Speed")
         self._btn_mode  = Button(cx, y0 + BTN_H + BTN_GAP,  "Switch Mode")
         self._btn_lobby = Button(cx, y0 + 2*(BTN_H+BTN_GAP), "  OPEN LOBBY  ", accent=ACCENT2)
@@ -841,7 +841,7 @@ class HostSetupMenu:
             cur_mode = self._modes[self._mode_idx]
             m_col    = self._mode_colors.get(cur_mode, C_LABEL)
             m_lbl    = self._lbl_f.render(self._mode_labels[cur_mode], True, m_col)
-            self.screen.blit(m_lbl, ((SCREEN_W - m_lbl.get_width()) // 2, 345))
+            self.screen.blit(m_lbl, ((SCREEN_W - m_lbl.get_width()) // 2, SCREEN_H // 2 + 46))
 
             # Speed button with indicator bars
             spd_lbl, spd_val = self.SPEED_OPTIONS[self._speed_idx]
