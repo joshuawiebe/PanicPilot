@@ -13,6 +13,7 @@
 from __future__ import annotations
 import math, sys, time, logging
 from typing import Optional
+from collections import deque
 import pygame
 
 from settings    import *
@@ -123,7 +124,7 @@ class ClientGame:
         self._mode_switch_accepted: bool       = False
 
         # Phase 12.2: Latency tracking for ping visualization
-        self._frame_times: list[float] = []
+        self._frame_times: deque[float] = deque(maxlen=60)
         self._estimated_latency_ms: int = 0
         self._last_latency_update = 0.0
 
@@ -293,9 +294,7 @@ class ClientGame:
             dt = min(self.clock.tick(FPS) / 1000.0, 0.05)
             
             # Phase 12.2: Track frame times for latency estimation
-            self._frame_times.append(dt * 1000)  # Convert to ms
-            if len(self._frame_times) > 60:  # Keep last 60 frames
-                self._frame_times.pop(0)
+            self._frame_times.append(dt * 1000)  # Convert to ms (deque auto-evicts oldest)
             
                 # Update latency every 0.5 seconds (estimate from frame variance)
             self._last_latency_update += dt
