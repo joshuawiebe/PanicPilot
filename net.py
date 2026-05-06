@@ -86,6 +86,7 @@ class HostConnection:
         self._lock       = threading.Lock()
         self._inbox: Optional[dict] = None
         self._client_lobby_inbox: Optional[dict] = None
+        self._chat_inbox: list[dict] = []  # Chat messages from client
         self._client_left           = False
         self._client_back_lobby     = False
         self._client_requests_state = False
@@ -171,6 +172,17 @@ class HostConnection:
         """Kicks the client from the lobby."""
         self.send_state({"type": "kick"})
 
+    def send_chat(self, text: str, username: str = "Host") -> None:
+        """Sends a chat message to the client."""
+        self.send_state({"type": "chat", "text": text, "sender": username})
+
+    def get_client_chat(self) -> Optional[dict]:
+        """Returns the next chat message from client (FIFO)."""
+        with self._lock:
+            if self._chat_inbox:
+                return self._chat_inbox.pop(0)
+        return None
+
     def send_back_to_lobby(self) -> None:
         """Informs the client that the game is returning to the lobby."""
         self.send_state({"type": "back_to_lobby"})
@@ -224,6 +236,7 @@ class HostConnection:
         with self._lock:
             self._inbox                 = None
             self._client_lobby_inbox    = None
+            self._chat_inbox            = []
             self._client_left           = False
             self._client_back_lobby     = False
             self._client_requests_state = False
@@ -306,6 +319,8 @@ class HostConnection:
                         self._mode_change_confirm = True
                     elif msg_type == "mode_change_deny":
                         self._mode_change_deny = True
+                    elif msg_type == "chat":
+                        self._chat_inbox.append(msg)
                     else:
                         self._inbox = msg   # Game input: always keep only the newest
         except (ConnectionError, OSError, json.JSONDecodeError) as e:
@@ -346,6 +361,7 @@ class ClientConnection:
         self._map_inbox: Optional[dict] = None
         self._host_lobby_inbox: Optional[dict] = None
         self._start_inbox: Optional[dict] = None
+        self._chat_inbox: list[dict] = []  # Chat messages from host
         self._kick_flag              = False
         self._host_back_lobby        = False
         self._mode_change_request    : Optional[int] = None
@@ -416,6 +432,17 @@ class ClientConnection:
         """Sends client lobby status (class) to host."""
         self.send_input({"type": "lobby_client", **data})
 
+    def send_chat(self, text: str, username: str = "Client") -> None:
+        """Sends a chat message to the host."""
+        self.send_input({"type": "chat", "text": text, "sender": username})
+
+    def get_host_chat(self) -> Optional[dict]:
+        """Returns the next chat message from host (FIFO)."""
+        with self._lock:
+            if self._chat_inbox:
+                return self._chat_inbox.pop(0)
+        return None
+
     def send_leave(self) -> None:
         """Informs host that client is leaving the lobby."""
         self.send_input({"type": "leave"})
@@ -483,6 +510,7 @@ class ClientConnection:
             self._map_inbox              = None
             self._host_lobby_inbox       = None
             self._start_inbox            = None
+            self._chat_inbox             = []
             self._kick_flag              = False
             self._host_back_lobby        = False
             self._mode_change_request    = None
@@ -527,6 +555,8 @@ class ClientConnection:
                         self._host_back_lobby = True
                     elif msg_type == "mode_change_request":
                         self._mode_change_request = msg.get("new_mode")
+                    elif msg_type == "chat":
+                        self._chat_inbox.append(msg)
                     else:
                         self._inbox = msg
         except (ConnectionError, OSError, json.JSONDecodeError) as e:

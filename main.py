@@ -27,6 +27,7 @@ import math
 import os
 import random
 import time
+import string
 import pygame
 
 from settings import *
@@ -120,9 +121,9 @@ def _draw_class_icon(surface: pygame.Surface, cls: str, rect: pygame.Rect, color
     else:
         pygame.draw.circle(surface, color, (cx, cy), 8, 2)
 CLASS_DESCRIPTIONS = {
-    "balanced":  "Good grip, normal speed",
-    "speedster": "High speed, slippery",
-    "tank":      "Slow but sturdy",
+    "balanced":  "Balanced  -  Good grip, normal speed",
+    "speedster": "Speedy  -  High speed, slippery & thirsty",
+    "tank":      "Tank  -  Slow but sturdy, off-road king",
 }
 
 
@@ -452,8 +453,8 @@ class ClassPicker:
     pvp_mode  = False -> Coop/Solo: no client marker, optional info line below
     """
     CLASSES  = list(CAR_CLASSES.keys())
-    TILE_W   = 248
-    TILE_H   = 118
+    TILE_W   = 260
+    TILE_H   = 130
     TILE_GAP = 20
 
     def __init__(self, cx: int, cy: int, pvp_mode: bool = True) -> None:
@@ -505,24 +506,34 @@ class ClassPicker:
             pygame.draw.rect(surface, bc, r, bw, border_radius=10)
 
             cs   = CAR_CLASSES[cls]
-            icon_rect = pygame.Rect(r.x + 4, r.y + 14, 28, 90)
+            icon_rect = pygame.Rect(r.x + 6, r.y + 12, 32, 100)
             _draw_class_icon(surface, cls, icon_rect, col if active else (60, 75, 100))
 
+            # Name
             name = self._fn.render(cs["display"], True,
                                    col if active else (90, 110, 150))
-            surface.blit(name, (r.x + 54, r.y + 12))
+            surface.blit(name, (r.x + 46, r.y + 10))
 
-            desc = self._fd.render(CLASS_DESCRIPTIONS[cls], True,
-                                   C_LABEL if active else (60, 75, 100))
-            surface.blit(desc, (r.x + 54, r.y + 36))
+            # Description - clipped to box width
+            desc_text = CLASS_DESCRIPTIONS[cls]
+            max_desc_w = self.TILE_W - 52
+            desc_surf = self._fd.render(desc_text, True,
+                                        C_LABEL if active else (60, 75, 100))
+            if desc_surf.get_width() > max_desc_w:
+                for n in range(len(desc_text) - 1, 0, -1):
+                    desc_surf = self._fd.render(desc_text[:n], True,
+                                                C_LABEL if active else (60, 75, 100))
+                    if desc_surf.get_width() <= max_desc_w:
+                        break
+            surface.blit(desc_surf, (r.x + 46, r.y + 34))
 
             stats = [
                 ("Speed", cs["speed_mul"],       (0, 195, 100)),
                 ("Grip",  cs["grip_mod"] / 2.0,  ACCENT),
-                ("Sprit", 1.0 / cs["fuel_mul"],  ACCENT2),
+                ("Fuel",  1.0 / cs["fuel_mul"],  ACCENT2),
             ]
             for si, (slbl, val, scol) in enumerate(stats):
-                bx = r.x + 54 + si * 65;  by = r.y + 60
+                bx = r.x + 46 + si * 70;  by = r.y + 56
                 sl = self._fs.render(slbl, True,
                                      (130, 145, 170) if active else (50, 60, 80))
                 surface.blit(sl, (bx, by))
@@ -768,7 +779,7 @@ class HostSetupMenu:
             _shadow_rect(self.screen, box.inflate(22, 12), radius=8)
             pygame.draw.rect(self.screen, (10, 20, 45), box.inflate(22, 12), border_radius=8)
             pygame.draw.rect(self.screen, C_BTN_BORDER, box.inflate(22, 12), 2, border_radius=8)
-            self.screen.blit(ip_hint, ((SCREEN_W - ip_hint.get_width()) // 2, 158))
+            self.screen.blit(ip_hint, ((SCREEN_W - ip_hint.get_width()) // 2, 148))
             self.screen.blit(ip_val, box)
             self._slider.draw(self.screen)
             self._mode_flash = max(0.0, self._mode_flash - dt)
@@ -974,6 +985,136 @@ class ClientSetupMenu:
                 y += 36
 
 
+# ── Chat Panel ────────────────────────────────────────────────────────
+
+class ChatPanel:
+    """Right-side chat panel for lobby communication."""
+
+    def __init__(self, screen: pygame.Surface, username: str = "Player") -> None:
+        self.screen = screen
+        self._username = username
+        self._t = 0.0
+
+        # Panel dimensions
+        self.x = SCREEN_W - 420
+        self.y = 170
+        self.w = 400
+        self.h = SCREEN_H - 240  # Leaves space for title and bottom hints
+
+        # Messages: list of {"sender": str, "text": str, "time": float}
+        self.messages: list[dict] = []
+        self._scroll = 0  # 0 = bottom
+
+        # Fonts
+        self._title_f = pygame.font.SysFont("Arial", 15, bold=True)
+        self._msg_f = pygame.font.SysFont("Arial", 13)
+        self._sender_f = pygame.font.SysFont("Arial", 13, bold=True)
+        self._hint_f = pygame.font.SysFont("Arial", 11)
+
+        # Input field
+        cx = self.x + self.w // 2
+        self._input = TextInput(cx, self.y + self.h - 28, "Type message...",
+                                allowed_chars=string.printable.replace('\n', '').replace('\r', '').replace('\x0b', '').replace('\x0c', ''),
+                                max_len=200)
+
+        self._btn_send = Button(self.x + self.w - 40, self.y + self.h - 28, ">", w=36, h=32, accent=ACCENT)
+
+        # Message line height
+        self._line_h = 20
+
+    def add_message(self, sender: str, text: str) -> None:
+        """Add a message to the chat history."""
+        self.messages.append({"sender": sender, "text": text, "time": self._t})
+        # Keep max 50 messages
+        if len(self.messages) > 50:
+            self.messages = self.messages[-50:]
+        # Auto-scroll to bottom
+        self._scroll = 0
+
+    def handle_event(self, event: pygame.event.Event) -> bool:
+        """Handle input events. Returns True if message was sent."""
+        if self._btn_send.is_clicked(event):
+            text = self._input.text.strip()
+            if text:
+                self.add_message(self._username, text)
+                self._input.text = ""
+                return True
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+            if self._input.active:
+                text = self._input.text.strip()
+                if text:
+                    self.add_message(self._username, text)
+                    self._input.text = ""
+                    return True
+        self._input.handle_event(event)
+        # Scroll with mouse wheel
+        if event.type == pygame.MOUSEWHEEL:
+            max_scroll = max(0, len(self.messages) * self._line_h - (self.h - 70))
+            if event.y > 0:
+                self._scroll = max(0, self._scroll - self._line_h * 3)
+            else:
+                self._scroll = min(max_scroll, self._scroll + self._line_h * 3)
+        return False
+
+    def draw(self, mouse: tuple) -> None:
+        """Draw the chat panel."""
+        # Background
+        pygame.draw.rect(self.screen, (12, 18, 35), (self.x, self.y, self.w, self.h), border_radius=8)
+        pygame.draw.rect(self.screen, (40, 60, 100), (self.x, self.y, self.w, self.h), 2, border_radius=8)
+
+        # Title bar
+        title = self._title_f.render("CHAT", True, ACCENT)
+        self.screen.blit(title, (self.x + 12, self.y + 8))
+
+        # Separator
+        pygame.draw.line(self.screen, (40, 60, 100), (self.x + 8, self.y + 30),
+                         (self.x + self.w - 8, self.y + 30), 1)
+
+        # Messages area
+        msg_area_y = self.y + 38
+        msg_area_h = self.h - 80  # Space for input field
+
+        visible_lines = msg_area_h // self._line_h
+        start_idx = max(0, len(self.messages) - visible_lines)
+
+        y = msg_area_y
+        for i in range(start_idx, len(self.messages)):
+            msg = self.messages[i]
+            sender = msg["sender"]
+            text = msg["text"]
+
+            # Sender name
+            is_self = (sender == self._username)
+            sender_col = ACCENT if is_self else (200, 180, 100)
+            sender_lbl = self._sender_f.render(f"{sender}:", True, sender_col)
+            self.screen.blit(sender_lbl, (self.x + 10, y))
+
+            # Message text (wrap if too long)
+            max_text_w = self.w - 20 - sender_lbl.get_width()
+            text_color = (180, 190, 210) if is_self else C_LABEL
+            self._draw_wrapped_text(text, self.x + 14 + sender_lbl.get_width(), y,
+                                    max_text_w, text_color)
+
+            y += self._line_h
+            if y > msg_area_y + msg_area_h:
+                break
+
+        # Input field
+        self._input.draw(self.screen)
+        self._btn_send.draw(self.screen, mouse)
+
+    def _draw_wrapped_text(self, text: str, x: int, y: int, max_w: int, color: tuple) -> None:
+        """Draw text that may be truncated if too long."""
+        lbl = self._msg_f.render(text, True, color)
+        if lbl.get_width() > max_w:
+            # Truncate with ellipsis
+            for i in range(len(text) - 1, 0, -1):
+                lbl = self._msg_f.render(text[:i] + "..", True, color)
+                if lbl.get_width() <= max_w:
+                    break
+        self.screen.blit(lbl, (x, y))
+
+
 # ── HOST LOBBY ────────────────────────────────────────────────────────
 
 class HostLobby:
@@ -1051,10 +1192,16 @@ class HostLobby:
         self._btn_settings = Button(cx, y0 + 2*(BTN_H+BTN_GAP), "  Settings  ")
         self._btn_back     = Button(cx, y0 + 3*(BTN_H+BTN_GAP), "  Main Menu  ")
 
+        # Chat panel
+        self._username = username or "Host"
+        self._chat = ChatPanel(screen, self._username)
+
     # ── Main loop ────────────────────────────────────────────────────
 
     def run(self) -> str:
         """Returns 'back' or 'settings'."""
+        global _particles
+        _particles = None
         clock = pygame.time.Clock()
         while True:
             dt = clock.tick(60) / 1000.0;  self._t += dt
@@ -1067,6 +1214,11 @@ class HostLobby:
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     self._close(); return "back"
                 self._picker.handle_event(event)
+                if self._chat.handle_event(event):
+                    # Message was sent - send to client
+                    if self._net.is_connected():
+                        msg = self._chat.messages[-1]
+                        self._net.send_chat(msg["text"], self._username)
                 if self._btn_start.is_clicked(event,
                                               disabled=not self._client_handshaked):
                     outcome = self._run_game()
@@ -1083,9 +1235,25 @@ class HostLobby:
             # ── Client-Lobby-Update ───────────────────────────────────────────
             cl = self._net.get_client_lobby()
             if cl:
-                self._client_class      = cl.get("car_class", "balanced")
-                self._client_room_name  = cl.get("client_name", "Client")
-                self._client_handshaked = True   # first data exchange confirmed
+                # Verify code if host has one set
+                client_code = cl.get("verify_code", "")
+                if self._verify_code and client_code != self._verify_code:
+                    # Wrong code - kick client
+                    self._net.send_kick()
+                    self._client_handshaked = False
+                else:
+                    self._client_class      = cl.get("car_class", "balanced")
+                    self._client_room_name  = cl.get("client_name", "Client")
+                    self._client_handshaked = True   # first data exchange confirmed
+
+            # ── Chat messages from client ──────────────────────────────────────
+            chat_msg = self._net.get_client_chat()
+            while chat_msg:
+                sender = chat_msg.get("sender", "Client")
+                text = chat_msg.get("text", "")
+                if text:
+                    self._chat.add_message(sender, text)
+                chat_msg = self._net.get_client_chat()
 
             if self._net.client_left():
                 self._client_class      = None
@@ -1218,32 +1386,38 @@ class HostLobby:
             self._net.shutdown()
 
     def _draw(self, mouse: tuple) -> None:
-        global _particles
-        _particles = None
         self.screen.fill(MENU_BG)
         _draw_animated_bg(self.screen, self._t, count=25, color=ACCENT2)
         _draw_title_glow(self.screen, "HOST LOBBY", 42, self._title_f, ACCENT2, self._t)
+
+        # ── Info Panel with margins ───────────────────────────────────────────
+        panel_y = 80
+        panel_h = 110
+        panel_w = 520
+        panel_rect = pygame.Rect((SCREEN_W - panel_w) // 2, panel_y, panel_w, panel_h)
+
+        # Panel background
+        panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        pygame.draw.rect(panel_surf, (15, 25, 50, 200), panel_surf.get_rect(), border_radius=10)
+        pygame.draw.rect(panel_surf, (60, 100, 180, 40), panel_surf.get_rect(), 2, border_radius=10)
+        self.screen.blit(panel_surf, panel_rect)
+
+        # Room name
         room_txt = self._lbl_f.render(f"Room: {self._room_name}", True, C_LABEL)
-        self.screen.blit(room_txt,
-                         ((SCREEN_W - room_txt.get_width()) // 2, 80))
+        self.screen.blit(room_txt, ((SCREEN_W - room_txt.get_width()) // 2, panel_y + 14))
 
-        # Verification code – prominent display for client to enter
-        vc_font = pygame.font.SysFont("Courier", 32, bold=True)
-        vc_lbl = vc_font.render(f"Code:  {self._verify_code}", True, ACCENT2)
-        vc_box = vc_lbl.get_rect(center=(SCREEN_W // 2, 104))
-        box_surf = pygame.Surface((vc_box.w + 24, vc_box.h + 12), pygame.SRCALPHA)
-        pygame.draw.rect(box_surf, (255, 200, 30, 15), box_surf.get_rect(), border_radius=6)
-        pygame.draw.rect(box_surf, (255, 200, 30, 60), box_surf.get_rect(), 2, border_radius=6)
-        self.screen.blit(box_surf, (vc_box.x - 12, vc_box.y - 6))
-        self.screen.blit(vc_lbl, (vc_box.x, vc_box.y))
+        # Verification code – prominent display
+        vc_font = pygame.font.SysFont("Courier", 28, bold=True)
+        vc_lbl = vc_font.render(f"Code: {self._verify_code}", True, (255, 220, 60))
+        self.screen.blit(vc_lbl, ((SCREEN_W - vc_lbl.get_width()) // 2, panel_y + 40))
 
+        # Mode and Track
         modes_lbl = {1: "Split Control", 2: "Panic Pilot (Fog)", 3: "PvP Racing"}
         modes_col = {1: (100, 180, 255), 2: ACCENT, 3: ACCENT2}
-        info_col  = modes_col.get(self.mode, C_LABEL)
+        info_col = modes_col.get(self.mode, C_LABEL)
         info = self._lbl_f.render(
-            f"Mode: {modes_lbl.get(self.mode,'?')}  |  "
-            f"Track: {self.length} Tiles", True, info_col)
-        self.screen.blit(info, ((SCREEN_W - info.get_width()) // 2, 104))
+            f"Mode: {modes_lbl.get(self.mode,'?')}   |   Track: {self.length} Tiles", True, info_col)
+        self.screen.blit(info, ((SCREEN_W - info.get_width()) // 2, panel_y + 68))
 
         # Phase 11.2: locked_classes & coop_info correctly per mode
         pvp       = (self.mode == 3)
@@ -1281,6 +1455,10 @@ class HostLobby:
             hl = self._hint_f.render(h, True, (60, 80, 110))
             self.screen.blit(hl, ((SCREEN_W - hl.get_width()) // 2,
                                    SCREEN_H - 44 + i * 18))
+
+        # ── Chat Panel ───────────────────────────────────────────────────────
+        self._chat.draw(mouse)
+
         pygame.display.flip()
 
 
@@ -1310,6 +1488,7 @@ class ClientLobby:
         self._lobby_timer    = 0.0
         self._last_update    = 0.0
         self._initial_sent   = False   # Phase 11.1: send request once
+        self._verify_code    = ""      # Filled in after popup
 
         cx = SCREEN_W // 2
         self._title_f  = pygame.font.SysFont("Arial", 38, bold=True)
@@ -1320,6 +1499,70 @@ class ClientLobby:
         self._picker   = ClassPicker(cx, SCREEN_H // 2 - 30, pvp_mode=True)
         y0 = SCREEN_H // 2 + 134
         self._btn_back = Button(cx, y0, "  Leave (ESC)  ", accent=(200, 60, 60))
+
+        import settings as _s
+        self._username = getattr(_s, "USERNAME", "").strip() or "Client"
+        self._chat = ChatPanel(screen, self._username)
+
+    def _show_verify_popup(self) -> str | None:
+        """Shows a modal popup asking for verification code. Returns code or None on cancel."""
+        popup_w, popup_h = 420, 240
+        px = (SCREEN_W - popup_w) // 2
+        py = (SCREEN_H - popup_h) // 2
+        popup_rect = pygame.Rect(px, py, popup_w, popup_h)
+
+        cx = SCREEN_W // 2
+        title_f = pygame.font.SysFont("Arial", 22, bold=True)
+        lbl_f = pygame.font.SysFont("Arial", 16)
+        inp = TextInput(cx, py + 100, "Enter code shown on host screen",
+                        allowed_chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", max_len=8)
+        inp.active = True
+
+        btn_ok = Button(cx - 80, py + 170, "  JOIN  ", w=140, h=42, accent=ACCENT)
+        btn_cancel = Button(cx + 80, py + 170, "  CANCEL  ", w=140, h=42)
+
+        clock = pygame.time.Clock()
+        while True:
+            dt = clock.tick(60) / 1000.0
+            self._t += dt
+            mouse = pygame.mouse.get_pos()
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return None
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    return None
+                if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    return inp.text.strip() if inp.text.strip() else None
+                inp.handle_event(event)
+                if btn_ok.is_clicked(event):
+                    return inp.text.strip() if inp.text.strip() else None
+                if btn_cancel.is_clicked(event):
+                    return None
+
+            # Draw popup over current screen
+            overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 160))
+            self.screen.blit(overlay, (0, 0))
+
+            # Popup background
+            pygame.draw.rect(self.screen, (20, 30, 55), popup_rect, border_radius=12)
+            pygame.draw.rect(self.screen, ACCENT, popup_rect, 2, border_radius=12)
+
+            title = title_f.render("VERIFICATION REQUIRED", True, ACCENT)
+            self.screen.blit(title, ((SCREEN_W - title.get_width()) // 2, py + 22))
+
+            desc = lbl_f.render("Enter the code displayed on the host screen", True, C_LABEL)
+            self.screen.blit(desc, ((SCREEN_W - desc.get_width()) // 2, py + 55))
+
+            inp.draw(self.screen)
+            btn_ok.draw(self.screen, mouse)
+            btn_cancel.draw(self.screen, mouse)
+
+            hint = self._hint_f.render("Ask the host for their code to join", True, (80, 100, 140))
+            self.screen.blit(hint, ((SCREEN_W - hint.get_width()) // 2, py + 215))
+
+            pygame.display.flip()
 
     def run(self) -> None:
         from connection_history import ConnectionHistory
@@ -1333,6 +1576,16 @@ class ClientLobby:
             pygame.time.wait(2500)
             return
         self._connected = True
+        global _particles
+        _particles = None
+        pygame.event.clear()  # Clear stale events from connection screen
+
+        # Show verification code popup after TCP connection
+        code = self._show_verify_popup()
+        if code is None:
+            self._leave()
+            return
+        self._verify_code = code
 
         while True:
             dt = clock.tick(60) / 1000.0;  self._t += dt
@@ -1345,12 +1598,25 @@ class ClientLobby:
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     self._leave(); return
                 self._picker.handle_event(event)
+                if self._chat.handle_event(event):
+                    if self._net.is_connected():
+                        msg = self._chat.messages[-1]
+                        self._net.send_chat(msg["text"], self._username)
                 if self._btn_back.is_clicked(event):
                     self._leave(); return
 
             if not self._net.is_connected():
                 self._draw_status("Connection lost.", RED)
                 pygame.time.wait(2000); return
+
+            # Chat messages from host
+            chat_msg = self._net.get_host_chat()
+            while chat_msg:
+                sender = chat_msg.get("sender", "Host")
+                text = chat_msg.get("text", "")
+                if text:
+                    self._chat.add_message(sender, text)
+                chat_msg = self._net.get_host_chat()
 
             if self._net.was_kicked():
                 # Phase 12.2: Kick handling - interruptible with ESC
@@ -1373,7 +1639,7 @@ class ClientLobby:
                 self._initial_sent = True
                 import settings as _s
                 client_name = getattr(_s, "USERNAME", "").strip() or "Client"
-                self._net.send_lobby({"car_class": self._picker.selected, "client_name": client_name})
+                self._net.send_lobby({"car_class": self._picker.selected, "client_name": client_name, "verify_code": self._verify_code})
 
             # Receive host lobby info
             hl = self._net.get_host_lobby()
@@ -1417,7 +1683,7 @@ class ClientLobby:
                 self._lobby_timer = 0.0
                 import settings as _s
                 client_name = getattr(_s, "USERNAME", "").strip() or "Client"
-                self._net.send_lobby({"car_class": self._picker.selected, "client_name": client_name})
+                self._net.send_lobby({"car_class": self._picker.selected, "client_name": client_name, "verify_code": self._verify_code})
 
             self._draw_lobby(mouse)
 
@@ -1467,8 +1733,6 @@ class ClientLobby:
         pygame.display.flip()
 
     def _draw_lobby(self, mouse: tuple) -> None:
-        global _particles
-        _particles = None
         self.screen.fill(MENU_BG)
         _draw_animated_bg(self.screen, self._t, count=25, color=ACCENT)
         _draw_title_glow(self.screen, "CLIENT LOBBY", 42, self._title_f, ACCENT, self._t)
@@ -1505,13 +1769,6 @@ class ClientLobby:
         info = self._lbl_f.render(info_str, True, info_col)
         self.screen.blit(info, ((SCREEN_W - info.get_width()) // 2, 104))
 
-        # Verification code – confirms connected to correct host
-        verify_code = self._host_info.get("verify_code", "")
-        if verify_code:
-            vc_font = pygame.font.SysFont("Courier", 24, bold=True)
-            vc_lbl = vc_font.render(f"Host Code:  {verify_code}", True, ACCENT2)
-            self.screen.blit(vc_lbl, ((SCREEN_W - vc_lbl.get_width()) // 2, 130))
-
         # ── Class Picker ─────────────────────────────────────────────────────
         locked = ({"Host": host_cls}
                   if handshaked and host_cls and self._picker.pvp_mode
@@ -1537,6 +1794,10 @@ class ClientLobby:
             "Choose class - host starts the race  |  ESC = Leave",
             True, (60, 80, 110))
         self.screen.blit(h, ((SCREEN_W - h.get_width()) // 2, SCREEN_H - 34))
+
+        # ── Chat Panel ───────────────────────────────────────────────────────
+        self._chat.draw(mouse)
+
         pygame.display.flip()
 
 
