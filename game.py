@@ -990,7 +990,7 @@ class Game:
             car_class=self.cars[0].car_class,
             game_over=self.game_over,
         )
-        if not self.game_over and self._race_started:
+        if not self.game_over and self._race_started and self._countdown <= 0:
             if self.track.surface_at(s.x, s.y) == "grass":
                 lbl = self._warn_font.render("OFF TRACK", True, YELLOW)
                 surface.blit(lbl, ((SCREEN_W - lbl.get_width()) // 2, SCREEN_H - 40))
