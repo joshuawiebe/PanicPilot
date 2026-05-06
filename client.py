@@ -41,6 +41,8 @@ NET_PORT               = 54321
 CONNECT_RETRY_INTERVAL = 2.0
 CONNECT_TIMEOUT        = 5.0
 LOCAL_PING_DURATION    = 5.0
+PING_COOLDOWN          = 0.25   # Minimum seconds between pings
+MAX_LOCAL_PINGS        = 15     # Cap on active local pings
 
 
 class ClientGame:
@@ -109,6 +111,7 @@ class ClientGame:
         self._pending_use_item:   bool            = False
         self._pending_cycle_class: bool           = False   # C one-shot
         self._local_pings:        list[list]      = []
+        self._last_ping_time:     float           = 0.0
         self._return_to_menu  = False
         self._return_to_lobby  = False   # Phase 11
         self._lobby_initiator  = ""      # "self" | "remote"
@@ -315,9 +318,13 @@ class ClientGame:
                     if self._paused:
                         self._handle_pause_click(event.pos)
                     elif self._mode == 2:
-                        wx, wy = self.camera.s2w(float(event.pos[0]), float(event.pos[1]))
-                        self._pending_ping = (wx, wy)
-                        self._local_pings.append([wx, wy, LOCAL_PING_DURATION])
+                        now = time.time()
+                        if now - self._last_ping_time >= PING_COOLDOWN:
+                            if len(self._local_pings) < MAX_LOCAL_PINGS:
+                                wx, wy = self.camera.s2w(float(event.pos[0]), float(event.pos[1]))
+                                self._pending_ping = (wx, wy)
+                                self._local_pings.append([wx, wy, LOCAL_PING_DURATION])
+                                self._last_ping_time = now
                 elif event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_ESCAPE, pygame.K_p):
                         if self._game_over or self._winner:

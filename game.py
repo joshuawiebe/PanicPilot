@@ -329,6 +329,8 @@ class Game:
             return
 
         self.pings = [p for p in self.pings if p[2] > 0]
+        if len(self.pings) > MAX_PINGS:
+            self.pings = self.pings[-MAX_PINGS:]
         for p in self.pings:
             p[2] -= dt
 
