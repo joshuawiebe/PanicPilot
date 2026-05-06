@@ -136,6 +136,11 @@ class Game:
         self.camera = Camera()
         self._init_game_objects()
 
+        # Screen shake state
+        self._shake_amount = 0.0
+        self._shake_decay = 8.0
+        self._shake_offset = (0, 0)
+
     # ─── Initialisierung ─────────────────────────────────────────────────────
 
     def _init_game_objects(self, track: Optional[Track] = None) -> None:
@@ -354,6 +359,10 @@ class Game:
         if self._paused:
             return
 
+        # Decay screen shake
+        if self._shake_amount > 0:
+            self._shake_amount = max(0, self._shake_amount - self._shake_decay * dt)
+
         self.pings = [p for p in self.pings if p[2] > 0]
         if len(self.pings) > MAX_PINGS:
             self.pings = self.pings[-MAX_PINGS:]
@@ -414,9 +423,11 @@ class Game:
         s0.x, s0.y, s0.speed = self.walls.resolve_all(
             s0.x, s0.y, s0.speed, self.cars[0].get_radius()
         )
+        speed_delta = abs(_pre_speed0 - s0.speed)
             # ── Phase 12: Detect wall collision ──────────────────────────
-        if _SM and abs(_pre_speed0 - s0.speed) > 40:
+        if _SM and speed_delta > 40:
             _SM.play_collision(min(1.0, abs(_pre_speed0) / 400.0))
+            self._shake_amount = min(12, speed_delta / 30)
 
         if abs(s0.speed) > 5.0:
             drain0 = (
@@ -743,6 +754,13 @@ class Game:
     def draw_world(self, surface: pygame.Surface) -> None:
         zoom = self.camera.zoom
         off_x, off_y = self.camera.offset()
+        # Apply screen shake
+        if self._shake_amount > 0.5:
+            import random as _rand
+            sx = int(self._shake_amount * (_rand.random() - 0.5) * 2)
+            sy = int(self._shake_amount * (_rand.random() - 0.5) * 2)
+            off_x += sx
+            off_y += sy
         bg_color = getattr(getattr(self.track, "theme", None), "bg_fill", GRASS_DARK)
         surface.fill(bg_color)
         self.track.draw(surface, off_x, off_y, zoom)
