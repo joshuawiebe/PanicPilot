@@ -200,9 +200,9 @@ def _draw_title(surface: pygame.Surface, text: str, y: int,
 def _draw_title_glow(surface: pygame.Surface, text: str, y: int,
                      font: pygame.font.Font, color: tuple, t: float) -> None:
     glow_amount = int(30 * math.sin(t * 1.8))
-    glow_col = (min(255, color[0] + glow_amount),
-                min(255, color[1] + glow_amount),
-                min(255, color[2] + glow_amount))
+    glow_col = (max(0, min(255, color[0] + glow_amount)),
+                max(0, min(255, color[1] + glow_amount)),
+                max(0, min(255, color[2] + glow_amount)))
     for offset in [(2, 2), (-1, -1), (1, 0), (0, 1)]:
         g = font.render(text, True, (glow_col[0]//4, glow_col[1]//4, glow_col[2]//4))
         surface.blit(g, ((SCREEN_W - g.get_width()) // 2 + offset[0],
@@ -601,17 +601,17 @@ class MainMenu:
 
             # Pulsing title with glow
             glow = int(40 * math.sin(self._t * 1.5))
-            title_col = (min(255, ACCENT2[0] + glow),
-                         min(255, ACCENT2[1] + glow),
-                         min(255, ACCENT2[2] + glow))
+            title_col = (max(0, min(255, ACCENT2[0] + glow)),
+                         max(0, min(255, ACCENT2[1] + glow)),
+                         max(0, min(255, ACCENT2[2] + glow)))
             _draw_title(self.screen, "PANIC PILOT", 86, self._title_f, title_col)
 
             # Subtle pulse on subtitle
             sub_alpha = int(200 + 55 * math.sin(self._t * 2.5))
             sub = self._sub_f.render("Asymmetric Co-op Racing Game", True,
-                                     (min(255, C_LABEL[0] + sub_alpha // 6),
-                                      min(255, C_LABEL[1] + sub_alpha // 6),
-                                      min(255, C_LABEL[2] + sub_alpha // 6)))
+                                     (max(0, min(255, C_LABEL[0] + sub_alpha // 6)),
+                                      max(0, min(255, C_LABEL[1] + sub_alpha // 6)),
+                                      max(0, min(255, C_LABEL[2] + sub_alpha // 6))))
             self.screen.blit(sub, ((SCREEN_W - sub.get_width()) // 2, 186))
 
             # Buttons with staggered entrance animation
