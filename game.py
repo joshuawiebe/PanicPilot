@@ -284,8 +284,9 @@ class Game:
                         if _SM:
                             _SM.play_pause()
                             if self._paused:
-                                _SM.engine_stop()
+                                _SM.pause_fade(200)
                             else:
+                                _SM.resume_fade(300)
                                 _SM.engine_start()
                 elif event.key == pygame.K_r:
                     if not self._paused:

@@ -822,6 +822,37 @@ class SoundManager:
     def play_pause(self) -> None:
         self._play_sfx("pause", 0.6)
 
+    def pause_fade(self, duration_ms: int = 200) -> None:
+        """Fade out engine and music for pause."""
+        if not self._ok:
+            return
+        try:
+            pygame.mixer.Channel(_CH_ENGINE_A).fadeout(duration_ms)
+            pygame.mixer.Channel(_CH_ENGINE_B).fadeout(duration_ms)
+        except Exception:
+            pass
+
+    def resume_fade(self, duration_ms: int = 200) -> None:
+        """Fade in engine after resume."""
+        if not self._ok or not self._engine_on:
+            return
+        try:
+            ch = pygame.mixer.Channel(_CH_ENGINE_A)
+            if self._eng_sounds and len(self._eng_sounds) > self._eng_band:
+                ch.set_volume(0.0)
+                ch.play(self._eng_sounds[self._eng_band], loops=-1)
+                ch.fadeout(0)  # Clear any pending fadeout
+                # Fade in over duration_ms
+                start_vol = 0.0
+                end_vol = self._sfx_vol * 0.55
+                for i in range(duration_ms // 20):
+                    vol = start_vol + (end_vol - start_vol) * (i / max(1, duration_ms // 20))
+                    ch.set_volume(vol)
+                    pygame.time.wait(20)
+                ch.set_volume(end_vol)
+        except Exception:
+            pass
+
     # ─── Cleanup ────────────────────────────────────────────────────────────
 
     def shutdown(self) -> None:
