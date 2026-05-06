@@ -2417,7 +2417,7 @@ class InGameSettingsScene:
             selected = (mode == self.pending_mode)
             bg = (30, 70, 30) if selected else (25, 40, 70)
             border = ACCENT if selected else (50, 80, 140)
-            pygame.draw.rect(self.screen, (0, 0, 0, 80), rect.move(2, 3), border_radius=6)
+            pygame.draw.rect(self.screen, (0, 0, 0), rect.move(2, 3), border_radius=6)
             pygame.draw.rect(self.screen, bg, rect, border_radius=6)
             pygame.draw.rect(self.screen, border, rect, 1, border_radius=6)
             hovered = rect.collidepoint(mouse)
@@ -2439,7 +2439,7 @@ class InGameSettingsScene:
             selected = (length == self.pending_track_length)
             bg = (30, 70, 30) if selected else (25, 40, 70)
             border = ACCENT if selected else (50, 80, 140)
-            pygame.draw.rect(self.screen, (0, 0, 0, 80), rect.move(2, 3), border_radius=6)
+            pygame.draw.rect(self.screen, (0, 0, 0), rect.move(2, 3), border_radius=6)
             pygame.draw.rect(self.screen, bg, rect, border_radius=6)
             pygame.draw.rect(self.screen, border, rect, 1, border_radius=6)
             hovered = rect.collidepoint(mouse)
@@ -2624,7 +2624,6 @@ class _FirstStartSetup:
         self._btn_w = 150
         self._btn_h = 42
         self._btn_gap = 20
-        self._btn_y = SCREEN_H - 55
 
     def run(self) -> None:
         import settings as _s
@@ -2641,15 +2640,18 @@ class _FirstStartSetup:
                 self._inp.handle_event(event)
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_RIGHT or event.key == pygame.K_RETURN:
-                        self._advance()
+                        if self._advance():
+                            return
                     elif event.key == pygame.K_LEFT:
                         if self._slide > 0:
                             self._slide -= 1
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if self._is_next_clicked(mouse):
-                        self._advance()
+                        if self._advance():
+                            return
                     elif self._is_skip_clicked(mouse):
-                        self._skip_to_name()
+                        if self._skip_to_name():
+                            return
 
             if self._first_draw:
                 global _particles
@@ -2661,30 +2663,33 @@ class _FirstStartSetup:
             self._draw_slide(mouse)
             pygame.display.flip()
 
-    def _advance(self) -> None:
+    def _advance(self) -> bool:
         import settings as _s
         if self._slide < len(self.SLIDES):
             self._slide += 1
         elif self._inp.text.strip():
             _s.USERNAME = self._inp.text.strip()
             _s.save_settings()
-            return
+            return True
+        return False
 
-    def _skip_to_name(self) -> None:
+    def _skip_to_name(self) -> bool:
         import settings as _s
         if self._slide < len(self.SLIDES):
             self._slide = len(self.SLIDES)
         elif self._inp.text.strip():
             _s.USERNAME = self._inp.text.strip()
             _s.save_settings()
-            return
+            return True
+        return False
 
     def _get_button_rects(self):
         """Return (next_rect, skip_rect)."""
+        cy = self.screen.get_height() - 55
         next_x = SCREEN_W // 2 + self._btn_gap // 2
         skip_x = SCREEN_W // 2 - self._btn_w - self._btn_gap // 2
-        next_rect = pygame.Rect(next_x, self._btn_y, self._btn_w, self._btn_h)
-        skip_rect = pygame.Rect(skip_x, self._btn_y, self._btn_w, self._btn_h)
+        next_rect = pygame.Rect(next_x, cy, self._btn_w, self._btn_h)
+        skip_rect = pygame.Rect(skip_x, cy, self._btn_w, self._btn_h)
         return next_rect, skip_rect
 
     def _is_next_clicked(self, pos: tuple) -> bool:
@@ -2699,14 +2704,14 @@ class _FirstStartSetup:
         """Draw a geometric icon for the wizard. Returns icon height."""
         color = self.ICON_COLORS.get(icon_type, ACCENT2)
         pulse = int(4 * math.sin(t * 2.5))
-        c = tuple(min(255, v + pulse) for v in color)
+        c = tuple(max(0, min(255, v + pulse)) for v in color)
 
         if icon_type == "racing":
             # Car shape: body + wheels
             body_w, body_h = 70, 28
             body = pygame.Rect(cx - body_w // 2, y, body_w, body_h)
             pygame.draw.rect(surface, c, body, border_radius=6)
-            pygame.draw.rect(surface, (0, 0, 0, 80), (cx - 20, y + 2, 18, 10), border_radius=3)
+            pygame.draw.rect(surface, (40, 40, 40), (cx - 20, y + 2, 18, 10), border_radius=3)
             w1 = pygame.Rect(cx - 28, y + body_h - 4, 14, 8)
             w2 = pygame.Rect(cx + 14, y + body_h - 4, 14, 8)
             pygame.draw.ellipse(surface, (80, 80, 80), w1)
@@ -2814,7 +2819,8 @@ class _FirstStartSetup:
         total = len(self.SLIDES) + 1
         dot_r, dot_gap = 5, 14
         dx = cx - (total - 1) * dot_gap // 2
-        dot_y = self._btn_y - 22
+        sh = self.screen.get_height()
+        dot_y = sh - 77
         for i in range(total):
             color = ACCENT if i == self._slide else (60, 70, 100)
             pygame.draw.circle(self.screen, color, (dx + i * dot_gap, dot_y), dot_r)
@@ -2828,7 +2834,7 @@ class _FirstStartSetup:
         # Next button
         next_bg = (30, 70, 30) if next_hover else (25, 40, 70)
         next_border = ACCENT if next_hover else (50, 80, 140)
-        pygame.draw.rect(self.screen, (0, 0, 0, 80), next_rect.move(2, 3), border_radius=8)
+        pygame.draw.rect(self.screen, (0, 0, 0), next_rect.move(2, 3), border_radius=8)
         pygame.draw.rect(self.screen, next_bg, next_rect, border_radius=8)
         pygame.draw.rect(self.screen, next_border, next_rect, 1, border_radius=8)
         next_label = "  START  >>  " if on_final else "  NEXT  >>  "
@@ -2840,7 +2846,7 @@ class _FirstStartSetup:
         if show_skip:
             skip_bg = (40, 30, 30) if skip_hover else (20, 25, 40)
             skip_border = (140, 80, 80) if skip_hover else (50, 60, 90)
-            pygame.draw.rect(self.screen, (0, 0, 0, 80), skip_rect.move(2, 3), border_radius=8)
+            pygame.draw.rect(self.screen, (0, 0, 0), skip_rect.move(2, 3), border_radius=8)
             pygame.draw.rect(self.screen, skip_bg, skip_rect, border_radius=8)
             pygame.draw.rect(self.screen, skip_border, skip_rect, 1, border_radius=8)
             skip_label = "  BACK  " if on_final else "  SKIP  >>  "
