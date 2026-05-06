@@ -25,6 +25,7 @@
 from __future__ import annotations
 import math
 import os
+import random
 import time
 import pygame
 
@@ -82,26 +83,40 @@ CLASS_COLORS = {
 
 
 def _draw_class_icon(surface: pygame.Surface, cls: str, rect: pygame.Rect, color: tuple) -> None:
-    """Draw a geometric icon for the class without relying on system fonts."""
+    """Draw a detailed geometric icon for the class without relying on system fonts."""
     cx, cy = rect.centerx, rect.centery
+    w, h = rect.width, rect.height
     if cls == "balanced":
-        # Diamond shape
-        pts = [(cx, cy - 12), (cx + 10, cy), (cx, cy + 12), (cx - 10, cy)]
+        # Diamond with inner cross and corner dots
+        pts = [(cx, cy - h//3), (cx + w//3, cy), (cx, cy + h//3), (cx - w//3, cy)]
         pygame.draw.polygon(surface, color, pts, 2)
+        pygame.draw.line(surface, color, (cx, cy - h//4), (cx, cy + h//4), 2)
+        pygame.draw.line(surface, color, (cx - w//5, cy), (cx + w//5, cy), 2)
         pygame.draw.circle(surface, color, (cx, cy), 3)
+        for dx, dy in [(-w//3, -h//3), (w//3, -h//3), (-w//3, h//3), (w//3, h//3)]:
+            pygame.draw.circle(surface, color, (cx + dx//2, cy + dy//2), 1)
     elif cls == "speedster":
-        # Double arrows
-        for dx in (-4, 6):
-            pts = [(cx + dx - 5, cy - 8), (cx + dx + 8, cy), (cx + dx - 5, cy + 8)]
-            pygame.draw.polygon(surface, color, pts, 2)
+        # Triple chevron arrows with trail lines
+        for i in range(3):
+            offset = (i - 1) * 10
+            pts = [(cx + offset - 4, cy - h//3),
+                   (cx + offset + w//3, cy),
+                   (cx + offset - 4, cy + h//3)]
+            pygame.draw.polygon(surface, color, pts, 2 if i == 1 else 1)
+        pygame.draw.line(surface, color, (cx - w//3, cy - h//4), (cx - w//3 - 6, cy - h//4), 1)
+        pygame.draw.line(surface, color, (cx - w//3, cy + h//4), (cx - w//3 - 6, cy + h//4), 1)
     elif cls == "tank":
-        # Hexagon
-        pts = []
-        for i in range(6):
-            angle = math.radians(60 * i - 30)
-            pts.append((cx + 11 * math.cos(angle), cy + 11 * math.sin(angle)))
+        # Shield shape with inner diamond and bolts
+        pts = [(cx - w//3, cy - h//3),
+               (cx + w//3, cy - h//3),
+               (cx + w//3, cy + h//6),
+               (cx, cy + h//3),
+               (cx - w//3, cy + h//6)]
         pygame.draw.polygon(surface, color, pts, 2)
-        pygame.draw.rect(surface, color, (cx - 4, cy - 4, 8, 8), 1)
+        inner = [(cx, cy - h//5), (cx + w//5, cy), (cx, cy + h//5), (cx - w//5, cy)]
+        pygame.draw.polygon(surface, color, inner, 1)
+        for bx, by in [(cx - w//3, cy - h//3), (cx + w//3, cy - h//3)]:
+            pygame.draw.circle(surface, color, (bx, by), 2)
     else:
         pygame.draw.circle(surface, color, (cx, cy), 8, 2)
 CLASS_DESCRIPTIONS = {
@@ -136,12 +151,63 @@ def _draw_bg(surface: pygame.Surface, t: float = 0.0) -> None:
         pygame.draw.line(surface, col, (0, i), (SCREEN_W, i))
 
 
+class _Particle:
+    def __init__(self) -> None:
+        self.reset()
+        self.y = random.uniform(0, SCREEN_H)
+    def reset(self) -> None:
+        self.x = random.uniform(0, SCREEN_W)
+        self.y = SCREEN_H + 10
+        self.speed = random.uniform(15, 40)
+        self.size = random.uniform(1, 3)
+        self.alpha = random.randint(30, 80)
+        self.drift = random.uniform(-8, 8)
+    def update(self, dt: float) -> None:
+        self.y -= self.speed * dt
+        self.x += self.drift * dt
+        if self.y < -10:
+            self.reset()
+    def draw(self, surface: pygame.Surface, color: tuple) -> None:
+        s = pygame.Surface((int(self.size * 2), int(self.size * 2)), pygame.SRCALPHA)
+        c = (*color, self.alpha)
+        pygame.draw.circle(s, c, (int(self.size), int(self.size)), int(self.size))
+        surface.blit(s, (int(self.x), int(self.y)))
+
+
+_particles: list[_Particle] | None = None
+
+def _draw_animated_bg(surface: pygame.Surface, t: float,
+                      count: int = 35, color: tuple = ACCENT) -> None:
+    global _particles
+    if _particles is None or len(_particles) != count:
+        _particles = [_Particle() for _ in range(count)]
+    _draw_bg(surface, t)
+    dt = 1 / 60.0
+    for p in _particles:
+        p.update(dt)
+        p.draw(surface, color)
+
+
 def _draw_title(surface: pygame.Surface, text: str, y: int,
                 font: pygame.font.Font,
                 color: tuple = (255, 215, 0)) -> None:
     shd = font.render(text, True, (0, 0, 0))
     surface.blit(shd, ((SCREEN_W - shd.get_width()) // 2 + 3, y + 3))
     lbl = font.render(text, True, color)
+    surface.blit(lbl, ((SCREEN_W - lbl.get_width()) // 2, y))
+
+
+def _draw_title_glow(surface: pygame.Surface, text: str, y: int,
+                     font: pygame.font.Font, color: tuple, t: float) -> None:
+    glow_amount = int(30 * math.sin(t * 1.8))
+    glow_col = (min(255, color[0] + glow_amount),
+                min(255, color[1] + glow_amount),
+                min(255, color[2] + glow_amount))
+    for offset in [(2, 2), (-1, -1), (1, 0), (0, 1)]:
+        g = font.render(text, True, (glow_col[0]//4, glow_col[1]//4, glow_col[2]//4))
+        surface.blit(g, ((SCREEN_W - g.get_width()) // 2 + offset[0],
+                         y + offset[1]))
+    lbl = font.render(text, True, glow_col)
     surface.blit(lbl, ((SCREEN_W - lbl.get_width()) // 2, y))
 
 
@@ -502,9 +568,12 @@ class MainMenu:
         self._btn_solo     = Button(cx, y0 +   BTN_H + BTN_GAP,   "  SOLO PLAY  ",     accent=GREEN)
         self._btn_client   = Button(cx, y0 + 2*(BTN_H+BTN_GAP),   "  CONNECT CLIENT  ")
         self._btn_settings = Button(cx, y0 + 3*(BTN_H+BTN_GAP),   "  SETTINGS  ",      accent=(0, 180, 180))
-        self._btn_quit     = Button(cx, y0 + 4*(BTN_H+BTN_GAP),   "  EXIT  ",          accent=(160, 40, 40))
+        self._btn_quit     = Button(cx, y0 + 3*(BTN_H+BTN_GAP) + BTN_H + BTN_GAP + 24,
+                                    "  EXIT  ",          accent=(160, 40, 40))
 
     def run(self) -> str:
+        global _particles
+        _particles = None
         clock = pygame.time.Clock()
         while True:
             dt = clock.tick(60) / 1000.0;  self._t += dt
@@ -519,15 +588,48 @@ class MainMenu:
                 if self._btn_client.is_clicked(event):               return "client"
                 if self._btn_settings.is_clicked(event):             return "settings"
                 if self._btn_quit.is_clicked(event):                 return "quit"
-            self.screen.fill(MENU_BG);  _draw_bg(self.screen, self._t)
-            pygame.draw.line(self.screen, ACCENT,
-                             (SCREEN_W//2 - 200, 168), (SCREEN_W//2 + 200, 168), 1)
-            _draw_title(self.screen, "PANIC PILOT", 86, self._title_f, ACCENT2)
-            sub = self._sub_f.render("Asymmetric Co-op Racing Game", True, C_LABEL)
+            self.screen.fill(MENU_BG)
+            _draw_animated_bg(self.screen, self._t, count=40, color=ACCENT)
+
+            # Animated separator line with glow pulse
+            line_alpha = int(180 + 75 * math.sin(self._t * 2))
+            line_col = (min(255, ACCENT[0] + line_alpha // 4),
+                        min(255, ACCENT[1] + line_alpha // 4),
+                        min(255, ACCENT[2] + line_alpha // 4))
+            pygame.draw.line(self.screen, line_col,
+                             (SCREEN_W//2 - 200, 168), (SCREEN_W//2 + 200, 168), 2)
+
+            # Pulsing title with glow
+            glow = int(40 * math.sin(self._t * 1.5))
+            title_col = (min(255, ACCENT2[0] + glow),
+                         min(255, ACCENT2[1] + glow),
+                         min(255, ACCENT2[2] + glow))
+            _draw_title(self.screen, "PANIC PILOT", 86, self._title_f, title_col)
+
+            # Subtle pulse on subtitle
+            sub_alpha = int(200 + 55 * math.sin(self._t * 2.5))
+            sub = self._sub_f.render("Asymmetric Co-op Racing Game", True,
+                                     (min(255, C_LABEL[0] + sub_alpha // 6),
+                                      min(255, C_LABEL[1] + sub_alpha // 6),
+                                      min(255, C_LABEL[2] + sub_alpha // 6)))
             self.screen.blit(sub, ((SCREEN_W - sub.get_width()) // 2, 186))
-            for btn in (self._btn_host, self._btn_solo,
-                        self._btn_client, self._btn_settings, self._btn_quit):
-                btn.draw(self.screen, mouse)
+
+            # Buttons with staggered entrance animation
+            all_btns = (self._btn_host, self._btn_solo,
+                        self._btn_client, self._btn_settings, self._btn_quit)
+            btn_colors = [ACCENT2, GREEN, None, (0, 180, 180), (160, 40, 40)]
+            for i, btn in enumerate(all_btns):
+                enter_t = min(1.0, max(0.0, (self._t - i * 0.08) * 3))
+                if enter_t < 1.0:
+                    ease = enter_t * enter_t * (3 - 2 * enter_t)
+                    oy = int((1 - ease) * 30)
+                    orig_rect = btn.rect.copy()
+                    btn.rect = btn.rect.move(0, oy)
+                    btn.draw(self.screen, mouse)
+                    btn.rect = orig_rect
+                else:
+                    btn.draw(self.screen, mouse)
+
             pygame.display.flip()
 
 
@@ -568,8 +670,10 @@ class SoloClassPicker:
                     _, scale = self.SPEED_OPTIONS[self._speed_idx]
                     return self._picker.selected, self._slider.value, scale
                 if self._btn_back.is_clicked(event):  return None
-            self.screen.fill(MENU_BG);  _draw_bg(self.screen, self._t)
-            _draw_title(self.screen, "SELECT VEHICLE", 52, self._title_f)
+            self.screen.fill(MENU_BG)
+            _draw_animated_bg(self.screen, self._t, count=20, color=GREEN)
+            _draw_title_glow(self.screen, "SELECT VEHICLE", 52, self._title_f,
+                             GREEN, self._t)
             # Solo: show_coop_info always False
             self._picker.draw(self.screen, show_coop_info=False)
             self._slider.draw(self.screen)
@@ -610,7 +714,7 @@ class HostSetupMenu:
         username = getattr(_s, "USERNAME", "").strip()
         self._room_label = f"{username}'s Room" if username else f"Host ({self._own_ip})"
         cx = SCREEN_W // 2
-        self._slider   = Slider(cx, SCREEN_H // 2 - 20, "Track Length (Tiles)", 10, 50, 20)
+        self._slider   = Slider(cx, SCREEN_H // 2 - 40, "Track Length (Tiles)", 10, 50, 20)
         self._modes    = [1, 2, 3]
         self._mode_idx = 0
         self._speed_idx = 1
@@ -618,7 +722,7 @@ class HostSetupMenu:
                              2: "Panic Pilot  - fog, navigator pings",
                              3: "PvP Racing  - two cars, one winner"}
         self._mode_colors = {1: (100, 180, 255), 2: ACCENT, 3: ACCENT2}
-        y0 = SCREEN_H // 2 + 70
+        y0 = SCREEN_H // 2 + 100
         self._btn_speed = Button(cx, y0,       "Speed")
         self._btn_mode  = Button(cx, y0 + BTN_H + BTN_GAP,  "Switch Mode")
         self._btn_lobby = Button(cx, y0 + 2*(BTN_H+BTN_GAP), "  OPEN LOBBY  ", accent=ACCENT2)
@@ -648,8 +752,10 @@ class HostSetupMenu:
                     _, scale = self.SPEED_OPTIONS[self._speed_idx]
                     return self._modes[self._mode_idx], self._slider.value, scale
                 if self._btn_back.is_clicked(event):  return None
-            self.screen.fill(MENU_BG);  _draw_bg(self.screen, self._t)
-            _draw_title(self.screen, "HOST SETTINGS", 72, self._title_f)
+            self.screen.fill(MENU_BG)
+            _draw_animated_bg(self.screen, self._t, count=20, color=ACCENT2)
+            _draw_title_glow(self.screen, "HOST SETTINGS", 72, self._title_f,
+                             ACCENT2, self._t)
             room_display = self._lbl_f.render(f"Room: {self._room_label}", True, C_LABEL)
             self.screen.blit(room_display,
                              ((SCREEN_W - room_display.get_width()) // 2, 120))
@@ -767,8 +873,10 @@ class ClientSetupMenu:
                     if ip: return ip
                 if self._btn_back.is_clicked(event):  return None
             
-            self.screen.fill(MENU_BG);  _draw_bg(self.screen, self._t)
-            _draw_title(self.screen, "CONNECT TO HOST", 76, self._title_f)
+            self.screen.fill(MENU_BG)
+            _draw_animated_bg(self.screen, self._t, count=20, color=ACCENT)
+            _draw_title_glow(self.screen, "CONNECT TO HOST", 76, self._title_f,
+                             ACCENT, self._t)
             
             # Draw history and discovered rooms above input field
             self._draw_connection_options(mouse)
@@ -922,7 +1030,7 @@ class HostLobby:
         self._client_handshaked = False
         self._lobby_timer = 999.0
 
-        y0 = SCREEN_H // 2 + 126
+        y0 = SCREEN_H // 2 + 140
         self._btn_start    = Button(cx, y0,       "  START RACE  ",  accent=(50, 200, 80))
         self._btn_kick     = Button(cx, y0 + BTN_H + BTN_GAP,  "  KICK CLIENT  ",  accent=(200, 60, 60))
         self._btn_settings = Button(cx, y0 + 2*(BTN_H+BTN_GAP), "  Settings  ")
@@ -1094,8 +1202,11 @@ class HostLobby:
             self._net.shutdown()
 
     def _draw(self, mouse: tuple) -> None:
-        self.screen.fill(MENU_BG);  _draw_bg(self.screen, self._t)
-        _draw_title(self.screen, "HOST LOBBY", 42, self._title_f, ACCENT2)
+        global _particles
+        _particles = None
+        self.screen.fill(MENU_BG)
+        _draw_animated_bg(self.screen, self._t, count=25, color=ACCENT2)
+        _draw_title_glow(self.screen, "HOST LOBBY", 42, self._title_f, ACCENT2, self._t)
         room_txt = self._lbl_f.render(f"Room: {self._room_name}", True, C_LABEL)
         self.screen.blit(room_txt,
                          ((SCREEN_W - room_txt.get_width()) // 2, 80))
@@ -1330,8 +1441,11 @@ class ClientLobby:
         pygame.display.flip()
 
     def _draw_lobby(self, mouse: tuple) -> None:
-        self.screen.fill(MENU_BG);  _draw_bg(self.screen, self._t)
-        _draw_title(self.screen, "CLIENT LOBBY", 42, self._title_f, ACCENT)
+        global _particles
+        _particles = None
+        self.screen.fill(MENU_BG)
+        _draw_animated_bg(self.screen, self._t, count=25, color=ACCENT)
+        _draw_title_glow(self.screen, "CLIENT LOBBY", 42, self._title_f, ACCENT, self._t)
 
         # ── Info line with real-time settings from host ───────────────────────
         host_cls   = self._host_info.get("host_class", "")
@@ -1444,9 +1558,9 @@ class SettingsScene:
                                        max_len=20)
         self._inp_username.text = init_username
 
-        self._btn_test  = Button(cx, SCREEN_H // 2 + 130,
+        self._btn_test  = Button(cx, SCREEN_H // 2 + 150,
                                  "  Play Test Sound  ", accent=(0, 195, 100))
-        self._btn_back  = Button(cx, SCREEN_H // 2 + 130 + BTN_H + BTN_GAP,
+        self._btn_back  = Button(cx, SCREEN_H // 2 + 150 + BTN_H + BTN_GAP,
                                  "  Back  ")
         self._test_hint = ""
         self._test_t    = 0.0
@@ -1501,18 +1615,23 @@ class SettingsScene:
 
     def _draw(self, mouse: tuple) -> None:
         self.screen.fill(MENU_BG)
-        _draw_bg(self.screen, self._t)
-        _draw_title(self.screen, "AUDIO SETTINGS", 72, self._title_f)
+        _draw_animated_bg(self.screen, self._t, count=20, color=(0, 180, 180))
+        _draw_title_glow(self.screen, "AUDIO SETTINGS", 72, self._title_f,
+                         (0, 180, 180), self._t)
+
+        # Animated separator line
+        sep_alpha = int(100 + 60 * math.sin(self._t * 2))
+        sep_col = (min(255, 30 + sep_alpha // 3),
+                   min(255, 50 + sep_alpha // 3),
+                   min(255, 80 + sep_alpha // 2))
+        pygame.draw.line(self.screen, sep_col,
+                         (SCREEN_W // 2 - 260, 154),
+                         (SCREEN_W // 2 + 260, 154), 1)
 
         # Info-Text
         info = self._sub_f.render(
             "Changes are applied immediately", True, C_LABEL)
         self.screen.blit(info, ((SCREEN_W - info.get_width()) // 2, 126))
-
-        # Separator line
-        pygame.draw.line(self.screen, (30, 50, 80),
-                         (SCREEN_W // 2 - 260, 154),
-                         (SCREEN_W // 2 + 260, 154), 1)
 
         self._sl_music.draw(self.screen)
         self._sl_sfx.draw(self.screen)
@@ -1687,10 +1806,15 @@ class _FirstStartSetup:
             pygame.display.flip()
 
     def _draw_slide(self, mouse: tuple) -> None:
+        global _particles
+        _particles = None
         cx = SCREEN_W // 2
+        self.screen.fill(MENU_BG)
+        _draw_animated_bg(self.screen, self._t, count=25, color=ACCENT2)
         if self._slide < len(self.SLIDES):
             slide = self.SLIDES[self._slide]
-            _draw_title(self.screen, slide["title"], 60, self._title_f, ACCENT2)
+            _draw_title_glow(self.screen, slide["title"], 60, self._title_f,
+                             ACCENT2, self._t)
             y = 140
             for line in slide["lines"]:
                 if line.startswith("  "):
@@ -1705,7 +1829,8 @@ class _FirstStartSetup:
                 self.screen.blit(lbl, ((SCREEN_W - lbl.get_width()) // 2, y))
                 y += 26
         else:
-            _draw_title(self.screen, "YOU'RE ALL SET!", 60, self._title_f, GREEN)
+            _draw_title_glow(self.screen, "YOU'RE ALL SET!", 60, self._title_f,
+                             GREEN, self._t)
             sub = self._sub_f.render("Choose a name to show other players", True, C_LABEL)
             self.screen.blit(sub, ((SCREEN_W - sub.get_width()) // 2, 120))
             self._inp.draw(self.screen)

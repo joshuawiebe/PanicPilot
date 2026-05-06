@@ -292,8 +292,8 @@ class TrackTile:
 
     def draw(self, screen: pygame.Surface,
              off_x: int, off_y: int, zoom: float = 1.0) -> None:
-        sx = int(self.world_x * zoom) + off_x
-        sy = int(self.world_y * zoom) + off_y
+        sx = round(self.world_x * zoom) + off_x
+        sy = round(self.world_y * zoom) + off_y
         scaled = max(1, int(TILE_SIZE * zoom))
         if sx > SCREEN_W or sy > SCREEN_H or sx + scaled < 0 or sy + scaled < 0:
             return

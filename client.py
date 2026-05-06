@@ -642,7 +642,8 @@ class ClientGame:
                           inventory=self._client_inventory,
                           car_class=inv_car.car_class if inv_car else "balanced",
                           latency=self._estimated_latency_ms,
-                          game_mode=self._mode)
+                          game_mode=self._mode,
+                          game_over=self._game_over)
 
         # Off-track warning
         if not self._game_over and not self._paused:

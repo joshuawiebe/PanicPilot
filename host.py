@@ -69,6 +69,10 @@ class HostGame(Game):
         self.mode        = mode
         self.speed_scale = speed_scale
 
+        # Ensure fog surface is fully black from the start for mode 2
+        if self.mode == 2:
+            self._fog_surf.fill((0, 0, 0, FOG_ALPHA))
+
         self._last_client_inp    = InputState()
         self._pending_map_send   = False
         self._return_to_settings = False

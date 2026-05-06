@@ -893,6 +893,7 @@ class Game:
             self.elapsed_time,
             inventory=self.cars[0].inventory,
             car_class=self.cars[0].car_class,
+            game_over=self.game_over,
         )
         if not self.game_over and self._race_started:
             if self.track.surface_at(s.x, s.y) == "grass":

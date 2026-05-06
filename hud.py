@@ -35,7 +35,8 @@ class HUD:
              inventory: str | None = None,
              car_class: str = "balanced",
              latency: int | None = None,
-             game_mode: int = 1) -> None:
+             game_mode: int = 1,
+             game_over: bool = False) -> None:
 
         self._draw_panel(surface, speed, fuel, elapsed)
         self._draw_inventory(surface, inventory)
@@ -45,6 +46,9 @@ class HUD:
         if latency is not None and game_mode == 2:
             self._draw_latency(surface, latency)
 
+        # Suppress centered "OUT OF FUEL!" when winner overlay is active
+        if game_over:
+            return
         fuel_pct = fuel / FUEL_MAX
         if fuel <= 0:
             self._draw_centered_message(surface, "OUT OF FUEL!", ORANGE,
