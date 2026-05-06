@@ -602,7 +602,7 @@ class Game:
         if _SM:
             from settings import CAR_MAX_SPEED
 
-            _SM.update_engine(s0.speed, CAR_MAX_SPEED, dt)
+            _SM.update_engine(s0.speed, CAR_MAX_SPEED, dt, surface=surf0)
 
         if self.mode == MODE_SPLIT:
             self.camera.zoom = 1.0

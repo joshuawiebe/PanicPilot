@@ -714,27 +714,36 @@ class SoundManager:
             pass
 
     def update_engine(self, speed: float, max_speed: float = 500.0,
-                      dt: float = 0.016) -> None:
+                      dt: float = 0.016, surface: str = "asphalt") -> None:
         """
         Call every update round.
         speed:     current vehicle speed (px/s)
         max_speed: Reference max speed
         dt:        Delta time since last frame
+        surface:   Current surface type ("asphalt", "grass", "curb", etc.)
 
         Automatically selects the appropriate engine sound and crossfades smoothly.
+        Surface type subtly affects pitch: grass/curb lower pitch, asphalt normal.
         """
         if not self._ok or not self._engine_on:
             return
         
         self._crash_cd = max(0.0, self._crash_cd - dt)
         
+        # Surface pitch modifier: grass = lower, curb = slightly lower
+        surface_pitch = {
+            "grass": 0.85,
+            "curb": 0.92,
+            "asphalt": 1.0,
+        }.get(surface, 1.0)
+        
         if self._use_engine_sound_v2:
-            self.update_engine_v2(speed, max_speed, dt)
+            self.update_engine_v2(speed, max_speed, dt, surface_pitch)
         else:
-            self.update_engine_legacy(speed, max_speed, dt)
+            self.update_engine_legacy(speed, max_speed, dt, surface_pitch)
 
     def update_engine_v2(self, speed: float, max_speed: float = 500.0,
-                         dt: float = 0.016) -> None:
+                         dt: float = 0.016, surface_pitch: float = 1.0) -> None:
         """
         Updates engine sound (with v2 synthesis-generated sounds).
         Uses 16 bands instead of 8 for smoother transitions.
@@ -745,7 +754,7 @@ class SoundManager:
         self._eng_hold_t = max(0.0, self._eng_hold_t - dt)
 
         pct  = min(1.0, max(0.0, abs(speed) / max(1.0, max_speed)))
-        pct_adj = math.pow(pct, 0.65)
+        pct_adj = math.pow(pct, 0.65) * surface_pitch
         band = min(15, int(pct_adj * 16))  # 16 bands instead of 8
 
         if band == self._eng_band or self._eng_hold_t > 0:
@@ -766,7 +775,7 @@ class SoundManager:
             self._eng_hold_t = self._ENGINE_HYSTERESIS
 
     def update_engine_legacy(self, speed: float, max_speed: float = 500.0,
-                             dt: float = 0.016) -> None:
+                             dt: float = 0.016, surface_pitch: float = 1.0) -> None:
         """
         Updates engine sound (legacy band system).
         """
@@ -776,7 +785,7 @@ class SoundManager:
         self._eng_hold_t = max(0.0, self._eng_hold_t - dt)
 
         pct  = min(1.0, max(0.0, abs(speed) / max(1.0, max_speed)))
-        pct_adj = math.pow(pct, 0.65)
+        pct_adj = math.pow(pct, 0.65) * surface_pitch
         band = min(_ENGINE_BANDS - 1, int(pct_adj * _ENGINE_BANDS))
 
         if band == self._eng_band or self._eng_hold_t > 0:
