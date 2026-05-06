@@ -114,7 +114,7 @@ CLASS_DESCRIPTIONS = {
 # ── Validation ────────────────────────────────────────────────────────────────
 
 def _validate_ip(ip: str) -> bool:
-    """Checks if ip is a valid IPv4 address (0.0.0.0 – 255.255.255.255)."""
+    """Checks if ip is a valid IPv4 address (0.0.0.0 - 255.255.255.255)."""
     if ip == "localhost":
         return True
     parts = ip.strip().split(".")
@@ -382,8 +382,8 @@ class ClassPicker:
     """
     Three vehicle classes as clickable glow tiles.
 
-    pvp_mode  = True  → PvP layout: client class is shown as marker
-    pvp_mode  = False → Coop/Solo: no client marker, optional info line below
+    pvp_mode  = True  -> PvP layout: client class is shown as marker
+    pvp_mode  = False -> Coop/Solo: no client marker, optional info line below
     """
     CLASSES  = list(CAR_CLASSES.keys())
     TILE_W   = 248
@@ -418,8 +418,8 @@ class ClassPicker:
              locked_classes: dict | None = None,
              show_coop_info: bool = False) -> None:
         """
-        locked_classes  – {label: class_name} marker (only useful in PvP)
-        show_coop_info  – shows coop hint below tiles (only modes 1/2
+        locked_classes  - {label: class_name} marker (only useful in PvP)
+        show_coop_info  - shows coop hint below tiles (only modes 1/2
                            AND client actually connected)
         In pvp_mode=False: client markers are completely suppressed.
         """
@@ -472,7 +472,7 @@ class ClassPicker:
             if locked_classes and self.pvp_mode:
                 for lbl_txt, locked_cls in locked_classes.items():
                     if locked_cls == cls:
-                        tag = self._fs.render(f"◄ {lbl_txt}", True,
+                        tag = self._fs.render(f"<< {lbl_txt}", True,
                                               col if active else GRAY)
                         surface.blit(tag,
                                      (r.x + r.w - tag.get_width() - 8,
@@ -499,12 +499,10 @@ class MainMenu:
         self._title_f = pygame.font.SysFont("Arial", 76, bold=True)
         self._sub_f   = pygame.font.SysFont("Arial", 19)
         self._btn_host     = Button(cx, y0,                       "  START HOST  ",    accent=ACCENT2)
-        self._btn_solo     = Button(cx, y0 +   BTN_H + BTN_GAP,   "  SOLO PLAY  ",    accent=GREEN)
+        self._btn_solo     = Button(cx, y0 +   BTN_H + BTN_GAP,   "  SOLO PLAY  ",     accent=GREEN)
         self._btn_client   = Button(cx, y0 + 2*(BTN_H+BTN_GAP),   "  CONNECT CLIENT  ")
-        self._btn_settings = Button(cx, y0 + 3*(BTN_H+BTN_GAP),   "  SETTINGS  ",
-                                    w=BTN_W, h=46, accent=(0, 180, 180))
-        self._btn_quit     = Button(cx, y0 + 3*(BTN_H+BTN_GAP) + 62,
-                                    "  EXIT  ", w=200, h=46, accent=(160, 40, 40))
+        self._btn_settings = Button(cx, y0 + 3*(BTN_H+BTN_GAP),   "  SETTINGS  ",      accent=(0, 180, 180))
+        self._btn_quit     = Button(cx, y0 + 4*(BTN_H+BTN_GAP),   "  EXIT  ",          accent=(160, 40, 40))
 
     def run(self) -> str:
         clock = pygame.time.Clock()
@@ -548,9 +546,9 @@ class SoloClassPicker:
         self._slider  = Slider(cx, SCREEN_H // 2 + 108, "Track Length", 10, 50, 15)
         self._speed_idx = 1
         y0 = SCREEN_H // 2 + 176
-        self._btn_speed = Button(cx, y0,       "Speed",          w=280, h=46)
-        self._btn_start = Button(cx, y0 + 62,  "  START SOLO  ", accent=GREEN)
-        self._btn_back  = Button(cx, y0 + 124, "  Back  ",     w=180, h=44)
+        self._btn_speed = Button(cx, y0,       "Speed")
+        self._btn_start = Button(cx, y0 + BTN_H + BTN_GAP,  "  START SOLO  ", accent=GREEN)
+        self._btn_back  = Button(cx, y0 + 2*(BTN_H+BTN_GAP), "  Back  ")
 
     def run(self) -> tuple[str, int, float] | None:
         clock = pygame.time.Clock()
@@ -612,19 +610,19 @@ class HostSetupMenu:
         username = getattr(_s, "USERNAME", "").strip()
         self._room_label = f"{username}'s Room" if username else f"Host ({self._own_ip})"
         cx = SCREEN_W // 2
-        self._slider   = Slider(cx, SCREEN_H // 2 - 80, "Track Length (Tiles)", 10, 50, 20)
+        self._slider   = Slider(cx, SCREEN_H // 2 - 20, "Track Length (Tiles)", 10, 50, 20)
         self._modes    = [1, 2, 3]
         self._mode_idx = 0
         self._speed_idx = 1
-        self._mode_labels = {1: "Split Control  \u2013 both control one car",
-                             2: "Panic Pilot  \u2013 fog, navigator pings",
-                             3: "PvP Racing  \u2013 two cars, one winner"}
+        self._mode_labels = {1: "Split Control  - both control one car",
+                             2: "Panic Pilot  - fog, navigator pings",
+                             3: "PvP Racing  - two cars, one winner"}
         self._mode_colors = {1: (100, 180, 255), 2: ACCENT, 3: ACCENT2}
-        y0 = SCREEN_H // 2 + 40
-        self._btn_speed = Button(cx, y0,       "Speed",           w=290, h=50)
-        self._btn_mode  = Button(cx, y0 + 64,  "Switch Mode",  w=290, h=50)
-        self._btn_lobby = Button(cx, y0 + 136, "  OPEN LOBBY  ", accent=ACCENT2)
-        self._btn_back  = Button(cx, y0 + 204, "  Back  ",      w=180, h=44)
+        y0 = SCREEN_H // 2 + 70
+        self._btn_speed = Button(cx, y0,       "Speed")
+        self._btn_mode  = Button(cx, y0 + BTN_H + BTN_GAP,  "Switch Mode")
+        self._btn_lobby = Button(cx, y0 + 2*(BTN_H+BTN_GAP), "  OPEN LOBBY  ", accent=ACCENT2)
+        self._btn_back  = Button(cx, y0 + 3*(BTN_H+BTN_GAP), "  Back  ")
 
     def run(self, prefill: dict | None = None, client_connected: bool = False) -> tuple | None:
         if prefill:
@@ -654,20 +652,20 @@ class HostSetupMenu:
             _draw_title(self.screen, "HOST SETTINGS", 72, self._title_f)
             room_display = self._lbl_f.render(f"Room: {self._room_label}", True, C_LABEL)
             self.screen.blit(room_display,
-                             ((SCREEN_W - room_display.get_width()) // 2, SCREEN_H // 2 - 120))
+                             ((SCREEN_W - room_display.get_width()) // 2, 120))
             ip_hint = self._ip_lbl.render("Your IP (for the client):", True, C_LABEL)
             ip_val  = self._ip_font.render(f"  {self._own_ip}:54321  ", True, ACCENT)
-            box = ip_val.get_rect(center=(SCREEN_W // 2, 144))
+            box = ip_val.get_rect(center=(SCREEN_W // 2, 180))
             _shadow_rect(self.screen, box.inflate(22, 12), radius=8)
             pygame.draw.rect(self.screen, (10, 20, 45), box.inflate(22, 12), border_radius=8)
             pygame.draw.rect(self.screen, C_BTN_BORDER, box.inflate(22, 12), 2, border_radius=8)
-            self.screen.blit(ip_hint, ((SCREEN_W - ip_hint.get_width()) // 2, 122))
+            self.screen.blit(ip_hint, ((SCREEN_W - ip_hint.get_width()) // 2, 158))
             self.screen.blit(ip_val, box)
             self._slider.draw(self.screen)
             cur_mode = self._modes[self._mode_idx]
             m_col    = self._mode_colors.get(cur_mode, C_LABEL)
             m_lbl    = self._lbl_f.render(self._mode_labels[cur_mode], True, m_col)
-            self.screen.blit(m_lbl, ((SCREEN_W - m_lbl.get_width()) // 2, SCREEN_H // 2 - 12))
+            self.screen.blit(m_lbl, ((SCREEN_W - m_lbl.get_width()) // 2, SCREEN_H // 2 + 46))
             spd_lbl, spd_val = self.SPEED_OPTIONS[self._speed_idx]
             orig = self._btn_speed.label
             self._btn_speed.label = f"Speed: {spd_lbl}"
@@ -707,11 +705,11 @@ class ClientSetupMenu:
         self._hint    = pygame.font.SysFont("Arial", 13)
         self._small_f = pygame.font.SysFont("Arial", 14)
         
-        self._input   = TextInput(cx, SCREEN_H//2 + 20, "e.g. 192.168.1.42")
+        self._input   = TextInput(cx, SCREEN_H // 2 + 30, "e.g. 192.168.1.42")
         self._input.active = True
         
-        self._btn_connect = Button(cx, SCREEN_H//2 + 110, "  CONNECT  ", accent=ACCENT)
-        self._btn_back    = Button(cx, SCREEN_H//2 + 170, "  Back  ", w=180, h=44)
+        self._btn_connect = Button(cx, SCREEN_H // 2 + 120, "  CONNECT  ", accent=ACCENT)
+        self._btn_back    = Button(cx, SCREEN_H // 2 + 120 + BTN_H + BTN_GAP, "  Back  ")
         
         # Recent connections and discovered rooms will be drawn as buttons
         self._recent_rects: list[tuple[pygame.Rect, str]] = []  # (rect, ip)
@@ -776,12 +774,12 @@ class ClientSetupMenu:
             self._draw_connection_options(mouse)
             
             lbl = self._lbl.render("Enter host IP address:", True, C_LABEL)
-            self.screen.blit(lbl, ((SCREEN_W - lbl.get_width()) // 2, SCREEN_H//2 - 48))
+            self.screen.blit(lbl, ((SCREEN_W - lbl.get_width()) // 2, SCREEN_H // 2 - 38))
             self._input.draw(self.screen)
             h = self._hint.render(
                 "Host IP is shown in the host's window title | CTRL+V to paste", 
                 True, C_LABEL)
-            self.screen.blit(h, ((SCREEN_W - h.get_width()) // 2, SCREEN_H//2 + 58))
+            self.screen.blit(h, ((SCREEN_W - h.get_width()) // 2, SCREEN_H // 2 + 86))
             
             self._btn_connect.draw(self.screen, mouse)
             self._btn_back.draw(self.screen, mouse)
@@ -793,7 +791,7 @@ class ClientSetupMenu:
         self._discovered_rects.clear()
         
         cx = SCREEN_W // 2
-        y = 130
+        y = 150
         
         # Draw recent connections
         recent = self._history.get_recent(limit=3)
@@ -860,10 +858,10 @@ class HostLobby:
     """
     Persistent Lobby.
     Phase 11.1:
-     • _lobby_timer starts at 999 → instant broadcast on first frame
-     • client_requests_state() → instant snapshot independent of timer
-     • _client_handshaked: only True when first lobby_client packet arrived
-     • show_coop_info: only for coop + handshaked client
+     - _lobby_timer starts at 999 -> instant broadcast on first frame
+     - client_requests_state() -> instant snapshot independent of timer
+     - _client_handshaked: only True when first lobby_client packet arrived
+     - show_coop_info: only for coop + handshaked client
     """
     NET_PORT      = 54321
     LOBBY_SEND_HZ = 10
@@ -926,9 +924,9 @@ class HostLobby:
 
         y0 = SCREEN_H // 2 + 126
         self._btn_start    = Button(cx, y0,       "  START RACE  ",  accent=(50, 200, 80))
-        self._btn_kick     = Button(cx, y0 + 66,  "  KICK CLIENT  ",     w=240, h=46, accent=(200, 60, 60))
-        self._btn_settings = Button(cx, y0 + 126, "  Settings  ",        w=240, h=44)
-        self._btn_back     = Button(cx, y0 + 186, "  Main Menu  ",       w=220, h=44)
+        self._btn_kick     = Button(cx, y0 + BTN_H + BTN_GAP,  "  KICK CLIENT  ",  accent=(200, 60, 60))
+        self._btn_settings = Button(cx, y0 + 2*(BTN_H+BTN_GAP), "  Settings  ")
+        self._btn_back     = Button(cx, y0 + 3*(BTN_H+BTN_GAP), "  Main Menu  ")
 
     # ── Main loop ────────────────────────────────────────────────────
 
@@ -1018,7 +1016,7 @@ class HostLobby:
             deadline       = time.time() + READY_TIMEOUT
             ready          = False
             next_send      = 0.0
-            print("DEBUG: Host starting start-retry loop …")
+            print("DEBUG: Host starting start-retry loop ...")
             while time.time() < deadline:
                 if time.time() >= next_send:
                     self._net.send_start(start_pkt)
@@ -1027,7 +1025,7 @@ class HostLobby:
                     next_send = time.time() + RETRY_INTERVAL
                 if self._net.client_ready_for_map():
                     ready = True
-                    print("DEBUG: Host received ready_for_map → sending map")
+                    print("DEBUG: Host received ready_for_map -> sending map")
                     break
                 self._draw_waiting_for_ready()
                 pygame.time.wait(10)
@@ -1036,7 +1034,7 @@ class HostLobby:
                     if event.type == pygame.QUIT:
                         self._close(); return "back"
             if not ready:
-                print("DEBUG: Host timeout – sending map without confirmation")
+                print("DEBUG: Host timeout - sending map without confirmation")
         else:
             # Coop / Solo: one start packet is enough
             self._net.send_start(start_pkt)
@@ -1079,11 +1077,11 @@ class HostLobby:
     def _draw_waiting_for_ready(self) -> None:
         """Brief loading screen while host waits for ready_for_map."""
         self.screen.fill(MENU_BG)
-        t = self._wait_f.render("Waiting for client readiness …", True, ACCENT)
+        t = self._wait_f.render("Waiting for client readiness ...", True, ACCENT)
         self.screen.blit(t, ((SCREEN_W - t.get_width())  // 2,
                                (SCREEN_H - t.get_height()) // 2))
         s = self._wait_f2.render(
-            "Establishing connection …", True, C_LABEL)
+            "Establishing connection ...", True, C_LABEL)
         self.screen.blit(s, ((SCREEN_W - s.get_width()) // 2,
                                SCREEN_H // 2 + 40))
         pygame.display.flip()
@@ -1106,7 +1104,7 @@ class HostLobby:
         modes_col = {1: (100, 180, 255), 2: ACCENT, 3: ACCENT2}
         info_col  = modes_col.get(self.mode, C_LABEL)
         info = self._lbl_f.render(
-            f"Mode: {modes_lbl.get(self.mode,'?')}   \u2022   "
+            f"Mode: {modes_lbl.get(self.mode,'?')}  |  "
             f"Track: {self.length} Tiles", True, info_col)
         self.screen.blit(info, ((SCREEN_W - info.get_width()) // 2, 104))
 
@@ -1140,7 +1138,7 @@ class HostLobby:
         self._btn_back.draw(self.screen, mouse)
 
         for i, h in enumerate([
-            "Choose class → START RACE",
+            "Choose class - START RACE",
              "ESC = Main Menu  |  Settings keeps connection alive",
         ]):
             hl = self._hint_f.render(h, True, (60, 80, 110))
@@ -1154,10 +1152,10 @@ class HostLobby:
 class ClientLobby:
     """
     Phase 11.1:
-     • Shows "Handshake in progress…" until first lobby_host snapshot arrives
-     • Sends request_lobby_state in first frame of lobby loop
-     • Shows mode/length/speed from host_info immediately and correctly
-     • pvp_mode of picker is dynamically updated from host_mode
+     - Shows "Handshake in progress ..." until first lobby_host snapshot arrives
+     - Sends request_lobby_state in first frame of lobby loop
+     - Shows mode/length/speed from host_info immediately and correctly
+     - pvp_mode of picker is dynamically updated from host_mode
     """
     NET_PORT        = 54321
     CONNECT_TIMEOUT = 5.0
@@ -1184,15 +1182,14 @@ class ClientLobby:
         # Picker starts as PvP; updated immediately after first host_info
         self._picker   = ClassPicker(cx, SCREEN_H // 2 - 30, pvp_mode=True)
         y0 = SCREEN_H // 2 + 134
-        self._btn_back = Button(cx, y0, "  Leave (ESC)  ",
-                                w=270, h=46, accent=(200, 60, 60))
+        self._btn_back = Button(cx, y0, "  Leave (ESC)  ", accent=(200, 60, 60))
 
     def run(self) -> None:
         from connection_history import ConnectionHistory
         _history = ConnectionHistory()
 
         clock = pygame.time.Clock()
-        self._draw_status(f"Connecting to {self.host_ip} …", WHITE)
+        self._draw_status(f"Connecting to {self.host_ip} ...", WHITE)
         if not self._net.connect(timeout=self.CONNECT_TIMEOUT):
             _history.add_or_update(self.host_ip, f"Host ({self.host_ip})", success=False)
             self._draw_status("Connection failed.", RED)
@@ -1258,7 +1255,7 @@ class ClientLobby:
             # Start signal – Phase 11.3: send ready_for_map IMMEDIATELY, BEFORE ClientGame is built
             start = self._net.get_start()
             if start:
-                print("DEBUG: Client received start packet – sending ready_for_map")
+                print("DEBUG: Client received start packet - sending ready_for_map")
                 # Send three times for reliability (idempotent on host)
                 for _ in range(3):
                     try: self._net.send_ready_for_map()
@@ -1290,12 +1287,12 @@ class ClientLobby:
     def _run_game(self, start_data: dict) -> None:
         """
         Phase 11.3: ready_for_map was already sent before this call
-        (3× in the lobby loop). Here only start ClientGame.
-        NO reset_lobby_flags() BEFORE the game – the map might already
+        (3x in the lobby loop). Here only start ClientGame.
+        NO reset_lobby_flags() BEFORE the game - the map might already
         be in _map_inbox and would be deleted.
         """
         from client import ClientGame
-        print("DEBUG: ClientLobby creating ClientGame …")
+        print("DEBUG: ClientLobby creating ClientGame ...")
         host_room = self._host_info.get("room_name", "Host")
         import settings as _s
         client_username = getattr(_s, "USERNAME", "").strip() or "Client"
@@ -1362,7 +1359,7 @@ class ClientLobby:
             info_str = "  |  ".join(info_parts)
             info_col = ACCENT2
         else:
-            info_str = "Waiting for host data …"
+            info_str = "Waiting for host data ..."
             info_col = (100, 100, 100)
 
         info = self._lbl_f.render(info_str, True, info_col)
@@ -1406,7 +1403,7 @@ def _run_solo(screen: pygame.Surface,
     game  = Game(screen=screen, locked_class0=car_class)
     game.speed_scale = speed_scale
     game.reset(track=track)
-    pygame.display.set_caption("Panic Pilot – SOLO  |  ESC/P=Pause  R=Reset")
+    pygame.display.set_caption("Panic Pilot - SOLO  |  ESC/P=Pause  R=Reset")
     game.run()
 
 
@@ -1415,8 +1412,8 @@ def _run_solo(screen: pygame.Surface,
 class SettingsScene:
     """
     Shows two volume sliders:
-      • Music Volume
-      • Effects Volume
+      - Music Volume
+      - Effects Volume
 
     Values are passed immediately to the SoundManager and saved in
     settings.py (MUSIC_VOLUME / SFX_VOLUME) so they remain
@@ -1448,10 +1445,9 @@ class SettingsScene:
         self._inp_username.text = init_username
 
         self._btn_test  = Button(cx, SCREEN_H // 2 + 130,
-                                 "  Play Test Sound  ", w=280, h=46,
-                                 accent=(0, 195, 100))
-        self._btn_back  = Button(cx, SCREEN_H // 2 + 188,
-                                 "  Back  ", w=200, h=44)
+                                 "  Play Test Sound  ", accent=(0, 195, 100))
+        self._btn_back  = Button(cx, SCREEN_H // 2 + 130 + BTN_H + BTN_GAP,
+                                 "  Back  ")
         self._test_hint = ""
         self._test_t    = 0.0
 
@@ -1531,7 +1527,7 @@ class SettingsScene:
             src_col = (200, 70, 50)
         src = self._hint_f.render(src_txt, True, src_col)
         self.screen.blit(src, ((SCREEN_W - src.get_width()) // 2,
-                                SCREEN_H // 2 + 90))
+                                SCREEN_H // 2 + 100))
 
         import settings as _s
         self._btn_test.draw(self.screen, mouse)
@@ -1575,10 +1571,10 @@ class _FirstStartSetup:
             "lines": [
                 "The Driver (Player 1) steers the car.",
                 "",
-                "  A / D         \u2013  Steer left / right",
-                "  W / S         \u2013  Accelerate / Brake",
-                "  M             \u2013  Toggle mirror view",
-                "  R             \u2013  Reset car on track",
+                "  A / D         -  Steer left / right",
+                "  W / S         -  Accelerate / Brake",
+                "  M             -  Toggle mirror view",
+                "  R             -  Reset car on track",
             ],
         },
         {
@@ -1588,21 +1584,21 @@ class _FirstStartSetup:
                 "The Navigator (Player 2) sees the full map but NOT the car.",
                 "They guide the driver by placing ping markers.",
                 "",
-                "  Mouse click   \u2013  Place ping marker on map",
-                "  O / P         \u2013  Zoom in / out (fog mode)",
-                "  I             \u2013  Use inventory item",
+                "  Mouse click   -  Place ping marker on map",
+                "  O / P         -  Zoom in / out (fog mode)",
+                "  I             -  Use inventory item",
             ],
         },
         {
             "title": "GAME MODES",
             "icon": "modes",
             "lines": [
-                "  Split Control   \u2013  Both players control one car together",
+                "  Split Control   -  Both players control one car together",
                 "",
-                "  Panic Pilot     \u2013  Fog covers the driver; navigator has",
+                "  Panic Pilot     -  Fog covers the driver; navigator has",
                 "                    the full map and uses pings to guide",
                 "",
-                "  PvP Racing      \u2013  Two cars race head-to-head; collect",
+                "  PvP Racing      -  Two cars race head-to-head; collect",
                 "                    items and use them against your opponent",
             ],
         },
@@ -1613,9 +1609,9 @@ class _FirstStartSetup:
                 "Your car burns fuel constantly. Collect yellow canisters",
                 "on the track to refuel, or you will be eliminated!",
                 "",
-                "  Boost pads     \u2013  Speed boost when driven over",
-                "  Oil slicks     \u2013  Drop behind you to spin out pursuers",
-                "  Item boxes     \u2013  Random power-up (PvP mode)",
+                "  Boost pads     -  Speed boost when driven over",
+                "  Oil slicks     -  Drop behind you to spin out pursuers",
+                "  Item boxes     -  Random power-up (PvP mode)",
             ],
         },
         {
@@ -1624,8 +1620,8 @@ class _FirstStartSetup:
             "lines": [
                 "Play with a friend over your local network.",
                 "",
-                "  Host            \u2013  Opens a room and waits for connection",
-                "  Connect Client  \u2013  Enter the host's IP address to join",
+                "  Host            -  Opens a room and waits for connection",
+                "  Connect Client  -  Enter the host's IP address to join",
                 "",
                 "Both players must agree on the game mode and settings.",
             ],
@@ -1646,7 +1642,7 @@ class _FirstStartSetup:
         self._inp.active = True
 
         self._btn_next = Button(SCREEN_W // 2 + 100, SCREEN_H - 100,
-                                "  NEXT  \u25B6  ", w=160, h=46, accent=ACCENT)
+                                "  NEXT  >>  ", w=160, h=46, accent=ACCENT)
         self._btn_skip = Button(SCREEN_W // 2 - 100, SCREEN_H - 100,
                                 "  SKIP  ", w=160, h=46)
 
@@ -1699,7 +1695,7 @@ class _FirstStartSetup:
             for line in slide["lines"]:
                 if line.startswith("  "):
                     txt = line.strip()
-                    col = (100, 180, 255) if "\u2013" in txt else (255, 220, 0)
+                    col = (100, 180, 255) if " - " in txt else (255, 220, 0)
                     lbl = self._hint_f.render(txt, True, col)
                 elif line:
                     lbl = self._sub_f.render(line, True, C_LABEL)
