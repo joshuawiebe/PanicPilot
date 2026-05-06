@@ -869,8 +869,23 @@ class ClientGame:
         self.screen.blit(t, ((SCREEN_W - t.get_width()) // 2, 180))
         m = self._mid_font.render(msg, True, WHITE)
         self.screen.blit(m, ((SCREEN_W - m.get_width()) // 2, 290))
+        
+        # Animated loading bar
+        now = pygame.time.get_ticks() / 1000.0
+        bar_w, bar_h = 300, 8
+        bar_x = (SCREEN_W - bar_w) // 2
+        bar_y = 330
+        # Draw bar background
+        pygame.draw.rect(self.screen, DARK_GRAY, (bar_x, bar_y, bar_w, bar_h),
+                        border_radius=4)
+        # Draw animated fill
+        fill_width = int(bar_w * (0.5 + 0.5 * math.sin(now * 2)))
+        pygame.draw.rect(self.screen, CYAN,
+                        (bar_x, bar_y, fill_width, bar_h),
+                        border_radius=4)
+        
         h = self._status_font.render("ESC = Cancel", True, GRAY)
-        self.screen.blit(h, ((SCREEN_W - h.get_width()) // 2, 340))
+        self.screen.blit(h, ((SCREEN_W - h.get_width()) // 2, 360))
         pygame.display.flip()
 
     def _draw_disconnected_screen(self) -> None:
