@@ -941,6 +941,7 @@ class ClientSetupMenu:
             for room in self._discovered_rooms[:3]:  # Show max 3
                 ip = room["ip"]
                 room_name = room.get("room_name", "Unknown Room")
+                verify_code = room.get("verify_code", "")
                 
                 # Draw as small button
                 rect = pygame.Rect(cx - 160, y, 320, 32)
@@ -955,6 +956,12 @@ class ClientSetupMenu:
                 text = self._small_f.render(f"[*]  {room_name}  ({ip})", True,
                                            ACCENT2 if hovered else C_LABEL)
                 self.screen.blit(text, (rect.x + 12, rect.centery - text.get_height() // 2))
+                
+                if verify_code:
+                    code_txt = self._small_f.render(f"[{verify_code}]", True,
+                                                   ACCENT2 if hovered else (180, 160, 60))
+                    self.screen.blit(code_txt, (rect.x + rect.w - code_txt.get_width() - 12,
+                                                rect.centery - code_txt.get_height() // 2))
                 
                 self._discovered_rects.append((rect, ip))
                 y += 36
@@ -1011,7 +1018,8 @@ class HostLobby:
             self._room_name = f"{username}'s Room"
         else:
             self._room_name = f"Host ({own_ip})"
-        self._broadcaster = RoomBroadcaster(self._room_name, tcp_port=self.NET_PORT)
+        self._verify_code = f"{random.randint(0, 9999):04d}"
+        self._broadcaster = RoomBroadcaster(self._room_name, tcp_port=self.NET_PORT, verify_code=self._verify_code)
         self._broadcaster.start()
 
         cx = SCREEN_W // 2
@@ -1100,6 +1108,7 @@ class HostLobby:
                 "speed_scale": self.speed_scale,
                 "status":      "lobby",
                 "room_name":   getattr(self, "_room_name", f"Host"),
+                "verify_code": getattr(self, "_verify_code", ""),
             })
 
     def _run_game(self) -> str:
@@ -1210,6 +1219,16 @@ class HostLobby:
         room_txt = self._lbl_f.render(f"Room: {self._room_name}", True, C_LABEL)
         self.screen.blit(room_txt,
                          ((SCREEN_W - room_txt.get_width()) // 2, 80))
+
+        # Verification code – prominent display for client to enter
+        vc_font = pygame.font.SysFont("Courier", 32, bold=True)
+        vc_lbl = vc_font.render(f"Code:  {self._verify_code}", True, ACCENT2)
+        vc_box = vc_lbl.get_rect(center=(SCREEN_W // 2, 104))
+        box_surf = pygame.Surface((vc_box.w + 24, vc_box.h + 12), pygame.SRCALPHA)
+        pygame.draw.rect(box_surf, (255, 200, 30, 15), box_surf.get_rect(), border_radius=6)
+        pygame.draw.rect(box_surf, (255, 200, 30, 60), box_surf.get_rect(), 2, border_radius=6)
+        self.screen.blit(box_surf, (vc_box.x - 12, vc_box.y - 6))
+        self.screen.blit(vc_lbl, (vc_box.x, vc_box.y))
 
         modes_lbl = {1: "Split Control", 2: "Panic Pilot (Fog)", 3: "PvP Racing"}
         modes_col = {1: (100, 180, 255), 2: ACCENT, 3: ACCENT2}
@@ -1477,7 +1496,14 @@ class ClientLobby:
             info_col = (100, 100, 100)
 
         info = self._lbl_f.render(info_str, True, info_col)
-        self.screen.blit(info, ((SCREEN_W - info.get_width()) // 2, 94))
+        self.screen.blit(info, ((SCREEN_W - info.get_width()) // 2, 104))
+
+        # Verification code – confirms connected to correct host
+        verify_code = self._host_info.get("verify_code", "")
+        if verify_code:
+            vc_font = pygame.font.SysFont("Courier", 24, bold=True)
+            vc_lbl = vc_font.render(f"Host Code:  {verify_code}", True, ACCENT2)
+            self.screen.blit(vc_lbl, ((SCREEN_W - vc_lbl.get_width()) // 2, 130))
 
         # ── Class Picker ─────────────────────────────────────────────────────
         locked = ({"Host": host_cls}

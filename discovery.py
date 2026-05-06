@@ -36,9 +36,10 @@ class RoomBroadcaster:
     Runs in background thread, sends beacon periodically.
     """
     
-    def __init__(self, room_name: str, tcp_port: int = 54321) -> None:
+    def __init__(self, room_name: str, tcp_port: int = 54321, verify_code: str = "") -> None:
         self.room_name = room_name
         self.tcp_port = tcp_port
+        self.verify_code = verify_code
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
@@ -87,6 +88,7 @@ class RoomBroadcaster:
                     "type": "room_beacon",
                     "room_name": room_name,
                     "tcp_port": self.tcp_port,
+                    "verify_code": self.verify_code,
                     "timestamp": datetime.now().isoformat(),
                 }
                 
@@ -164,7 +166,7 @@ class RoomListener:
         Get currently discovered rooms (non-blocking).
         
         Returns:
-            List of {ip, room_name, tcp_port, last_seen}
+            List of {ip, room_name, tcp_port, verify_code, last_seen}
         """
         now = datetime.now()
         
@@ -220,12 +222,14 @@ class RoomListener:
                         ip = addr
                         room_name = msg.get("room_name", "Unknown Room")
                         tcp_port = msg.get("tcp_port", 54321)
+                        verify_code = msg.get("verify_code", "")
                         
                         with self._lock:
                             self._rooms[ip] = {
                                 "ip": ip,
                                 "room_name": room_name,
                                 "tcp_port": tcp_port,
+                                "verify_code": verify_code,
                                 "last_seen": datetime.now().isoformat(),
                             }
                 
