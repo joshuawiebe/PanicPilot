@@ -2031,6 +2031,420 @@ class SettingsScene:
         pygame.display.flip()
 
 
+class InGameSettingsScene:
+    """
+    In-game settings panel shown while paused.
+    Allows changing game mode, track length, accessing chat,
+    and adjusting volume. Changes require peer confirmation in multiplayer.
+    """
+
+    MODE_NAMES = {1: "Split Control", 2: "Panic Pilot", 3: "PvP Racing"}
+    MODE_DESCRIPTIONS = {
+        1: "Two players share one keyboard",
+        2: "Fog of war - find your navigator",
+        3: "Each player controls their own car",
+    }
+    TRACK_LENGTHS = [10, 15, 20, 25, 30]
+
+    def __init__(
+        self,
+        screen: pygame.Surface,
+        background: pygame.Surface,
+        current_mode: int = 1,
+        current_track_length: int = 20,
+        net: object = None,
+        is_host: bool = True,
+        chat_messages: list[dict] | None = None,
+        username: str = "Player",
+    ) -> None:
+        self.screen = screen
+        self.background = background
+        self.current_mode = current_mode
+        self.pending_mode = current_mode
+        self.current_track_length = current_track_length
+        self.pending_track_length = current_track_length
+        self.net = net
+        self.is_host = is_host
+        self.username = username
+
+        self._t = 0.0
+        self._title_f = pygame.font.SysFont("Arial", 32, bold=True)
+        self._sub_f = pygame.font.SysFont("Arial", 16)
+        self._small_f = pygame.font.SysFont("Arial", 14)
+
+        # Chat
+        self._chat = ChatPanel(screen, username)
+        if chat_messages:
+            self._chat.messages = list(chat_messages)
+
+        # Panel dimensions
+        self._panel_w = 700
+        self._panel_h = 520
+        self._panel_x = (SCREEN_W - self._panel_w) // 2
+        self._panel_y = (SCREEN_H - self._panel_h) // 2
+
+        # Game mode buttons
+        mode_btn_w = 180
+        mode_btn_h = 50
+        mode_gap = 12
+        mode_start_x = self._panel_x + 30
+        mode_start_y = self._panel_y + 70
+        self._mode_btns: dict[int, tuple[Button, pygame.Rect]] = {}
+        for i, mode in enumerate([1, 2, 3]):
+            x = mode_start_x + i * (mode_btn_w + mode_gap)
+            y = mode_start_y
+            btn = Button(x + mode_btn_w // 2, y + mode_btn_h // 2,
+                         self.MODE_NAMES[mode], w=mode_btn_w, h=mode_btn_h,
+                         accent=(40, 90, 40) if mode == current_mode else (40, 60, 120))
+            self._mode_btns[mode] = (btn, pygame.Rect(x, y, mode_btn_w, mode_btn_h))
+
+        # Track length buttons
+        length_btn_w = 80
+        length_btn_h = 40
+        length_gap = 10
+        length_start_x = self._panel_x + 60
+        length_start_y = self._panel_y + 180
+        self._length_btns: dict[int, tuple[Button, pygame.Rect]] = {}
+        for i, length in enumerate(self.TRACK_LENGTHS):
+            x = length_start_x + i * (length_btn_w + length_gap)
+            y = length_start_y
+            selected = (length == current_track_length)
+            btn = Button(x + length_btn_w // 2, y + length_btn_h // 2,
+                         f"{length}", w=length_btn_w, h=length_btn_h,
+                         accent=(40, 90, 40) if selected else (40, 60, 120))
+            self._length_btns[length] = (btn, pygame.Rect(x, y, length_btn_w, length_btn_h))
+
+        # Volume sliders
+        import settings as _s
+        self._sl_music = Slider(self._panel_x + 180, self._panel_y + 270,
+                                "Music", 0, 100, getattr(_s, "MUSIC_VOLUME", 70))
+        self._sl_sfx = Slider(self._panel_x + 180, self._panel_y + 320,
+                              "Effects", 0, 100, getattr(_s, "SFX_VOLUME", 80))
+
+        # Apply button
+        self._btn_apply = Button(self._panel_x + self._panel_w // 2,
+                                 self._panel_y + self._panel_h - 60,
+                                 "  Apply Changes  ", accent=(40, 120, 60))
+        self._btn_close = Button(self._panel_x + self._panel_w - 50,
+                                 self._panel_y + 20, "X", w=40, h=30)
+
+        # Status message
+        self._status = ""
+        self._status_timer = 0.0
+
+        # Confirmation dialog state
+        self._show_confirm = False
+        self._confirm_type = ""  # "mode" or "track"
+        self._confirm_value = 0
+        self._confirm_timer = 0.0
+        self._waiting_for_peer = False
+
+        # Confirm dialog buttons (created lazily)
+        self._btn_confirm_yes: Button | None = None
+        self._btn_confirm_no: Button | None = None
+        self._confirm_dialog_rect: pygame.Rect | None = None
+
+    def run(self) -> dict:
+        """
+        Run the settings loop. Returns dict with any changes made.
+        {"mode": int, "track_length": int} or empty dict.
+        """
+        clock = pygame.time.Clock()
+        changes = {}
+
+        while True:
+            dt = clock.tick(60) / 1000.0
+            self._t += dt
+            self._status_timer = max(0.0, self._status_timer - dt)
+            self._confirm_timer = max(0.0, self._confirm_timer - dt)
+
+            mouse = pygame.mouse.get_pos()
+            handled = False
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return changes
+
+                if self._chat.handle_event(event):
+                    if self.net and hasattr(self.net, "send_chat"):
+                        self.net.send_chat(self.username, self._chat.messages[-1]["text"])
+                    continue
+
+                if self._btn_close.is_clicked(event):
+                    return changes
+
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    if self._chat._open:
+                        self._chat.toggle()
+                    else:
+                        return changes
+
+                if self._show_confirm:
+                    # Handle confirm dialog events
+                    if self._btn_confirm_yes and self._btn_confirm_yes.is_clicked(event):
+                        if self.net:
+                            if self._confirm_type == "mode":
+                                self.net.send_mode_change_confirm()
+                            else:
+                                self.net.send_track_length_change_confirm()
+                        self._show_confirm = False
+                        changes = {"mode": self._confirm_value} if self._confirm_type == "mode" else {"track_length": self._confirm_value}
+                        return changes
+                    elif self._btn_confirm_no and self._btn_confirm_no.is_clicked(event):
+                        if self.net:
+                            if self._confirm_type == "mode":
+                                self.net.send_mode_change_deny()
+                            else:
+                                self.net.send_track_length_change_deny()
+                        self._show_confirm = False
+                    continue
+
+                # Mode buttons
+                for mode, (btn, rect) in self._mode_btns.items():
+                    if btn.is_clicked(event):
+                        self.pending_mode = mode
+                        handled = True
+
+                # Track length buttons
+                for length, (btn, rect) in self._length_btns.items():
+                    if btn.is_clicked(event):
+                        self.pending_track_length = length
+                        handled = True
+
+                # Apply button
+                if self._btn_apply.is_clicked(event):
+                    changes = self._apply_changes()
+                    if changes:
+                        return changes
+
+                # Sliders
+                self._sl_music.handle_event(event)
+                self._sl_sfx.handle_event(event)
+                if event.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP):
+                    self._apply_volumes()
+
+            if not handled:
+                # Check for peer responses
+                if self._waiting_for_peer and self.net:
+                    if self._confirm_type == "mode":
+                        if hasattr(self.net, "client_confirmed_mode_change") and self.net.client_confirmed_mode_change():
+                            self._status = "Peer accepted! Applying changes..."
+                            changes = {"mode": self._confirm_value}
+                            self._waiting_for_peer = False
+                            self._confirm_timer = 2.0
+                            return changes
+                        elif hasattr(self.net, "client_denied_mode_change") and self.net.client_denied_mode_change():
+                            self._status = "Peer denied the change."
+                            self._waiting_for_peer = False
+                            self._confirm_timer = 2.0
+                    elif self._confirm_type == "track":
+                        if hasattr(self.net, "client_confirmed_track_length_change") and self.net.client_confirmed_track_length_change():
+                            self._status = "Peer accepted! Applying changes..."
+                            changes = {"track_length": self._confirm_value}
+                            self._waiting_for_peer = False
+                            self._confirm_timer = 2.0
+                            return changes
+                        elif hasattr(self.net, "client_denied_track_length_change") and self.net.client_denied_track_length_change():
+                            self._status = "Peer denied the change."
+                            self._waiting_for_peer = False
+                            self._confirm_timer = 2.0
+
+                # Check for incoming mode/track change requests (if client)
+                if not self.is_host and self.net:
+                    if hasattr(self.net, "get_mode_change_request"):
+                        req = self.net.get_mode_change_request()
+                        if req is not None:
+                            self._show_confirm = True
+                            self._confirm_type = "mode"
+                            self._confirm_value = req
+                            self._confirm_timer = 10.0
+                    if hasattr(self.net, "get_track_length_change_request"):
+                        req = self.net.get_track_length_change_request()
+                        if req is not None:
+                            self._show_confirm = True
+                            self._confirm_type = "track"
+                            self._confirm_value = req
+                            self._confirm_timer = 10.0
+
+            # Check for incoming chat messages
+            if self.net and hasattr(self.net, "get_chat"):
+                msg = self.net.get_chat()
+                if msg:
+                    sender = msg.get("sender", "Unknown")
+                    text = msg.get("text", "")
+                    self._chat.add_message(sender, text)
+
+            self._draw(mouse)
+            pygame.display.flip()
+
+    def _apply_changes(self) -> dict:
+        """Apply pending changes, sending requests to peer if needed."""
+        changes = {}
+
+        # Mode change
+        if self.pending_mode != self.current_mode:
+            if self.net and self.is_host:
+                self.net.send_mode_change_request(self.pending_mode)
+                self._waiting_for_peer = True
+                self._confirm_type = "mode"
+                self._confirm_value = self.pending_mode
+                self._status = "Waiting for peer confirmation..."
+                return {}  # Will return changes after confirmation
+            else:
+                changes["mode"] = self.pending_mode
+
+        # Track length change
+        if self.pending_track_length != self.current_track_length:
+            if self.net and self.is_host:
+                self.net.send_track_length_change_request(self.pending_track_length)
+                self._waiting_for_peer = True
+                self._confirm_type = "track"
+                self._confirm_value = self.pending_track_length
+                self._status = "Waiting for peer confirmation..."
+                return {}  # Will return changes after confirmation
+            else:
+                changes["track_length"] = self.pending_track_length
+
+        # If no multiplayer, apply immediately
+        if not self.net:
+            if self.pending_mode != self.current_mode:
+                changes["mode"] = self.pending_mode
+            if self.pending_track_length != self.current_track_length:
+                changes["track_length"] = self.pending_track_length
+
+        return changes
+
+    def _apply_volumes(self) -> None:
+        import settings as _s
+        _s.MUSIC_VOLUME = int(self._sl_music.value)
+        _s.SFX_VOLUME = int(self._sl_sfx.value)
+        if _sound_mod and _sound_mod.get():
+            _sound_mod.get().set_music_volume(_s.MUSIC_VOLUME)
+            _sound_mod.get().set_sfx_volume(_s.SFX_VOLUME)
+
+    def _draw(self, mouse: tuple) -> None:
+        # Draw game in background
+        self.screen.blit(self.background, (0, 0))
+
+        # Dim overlay
+        overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        self.screen.blit(overlay, (0, 0))
+
+        # Panel background
+        pygame.draw.rect(self.screen, (15, 22, 40),
+                         (self._panel_x, self._panel_y, self._panel_w, self._panel_h),
+                         border_radius=12)
+        pygame.draw.rect(self.screen, (60, 100, 180),
+                         (self._panel_x, self._panel_y, self._panel_w, self._panel_h),
+                         2, border_radius=12)
+
+        # Title
+        title = self._title_f.render("GAME SETTINGS", True, CYAN)
+        self.screen.blit(title, (self._panel_x + 20, self._panel_y + 12))
+
+        # Close button
+        self._btn_close.draw(self.screen, mouse)
+
+        # Separator
+        pygame.draw.line(self.screen, (40, 60, 100),
+                         (self._panel_x + 15, self._panel_y + 52),
+                         (self._panel_x + self._panel_w - 15, self._panel_y + 52), 1)
+
+        # Game Mode section
+        mode_lbl = self._sub_f.render("Game Mode", True, (180, 190, 210))
+        self.screen.blit(mode_lbl, (self._panel_x + 30, self._panel_y + 58))
+
+        for mode, (btn, rect) in self._mode_btns.items():
+            selected = (mode == self.pending_mode)
+            bg = (30, 70, 30) if selected else (25, 40, 70)
+            border = ACCENT if selected else (50, 80, 140)
+            pygame.draw.rect(self.screen, (0, 0, 0, 80), rect.move(2, 3), border_radius=6)
+            pygame.draw.rect(self.screen, bg, rect, border_radius=6)
+            pygame.draw.rect(self.screen, border, rect, 1, border_radius=6)
+            hovered = rect.collidepoint(mouse)
+            lbl = self._sub_f.render(self.MODE_NAMES[mode], True,
+                                     WHITE if hovered or selected else (180, 190, 210))
+            self.screen.blit(lbl, (rect.centerx - lbl.get_width() // 2,
+                                   rect.centery - lbl.get_height() // 2))
+
+        # Mode description
+        desc = self.MODE_DESCRIPTIONS.get(self.pending_mode, "")
+        desc_lbl = self._small_f.render(desc, True, (100, 120, 150))
+        self.screen.blit(desc_lbl, (self._panel_x + 30, self._mode_btns[1][1].bottom + 8))
+
+        # Track Length section
+        length_lbl = self._sub_f.render("Track Length", True, (180, 190, 210))
+        self.screen.blit(length_lbl, (self._panel_x + 30, self._panel_y + 160))
+
+        for length, (btn, rect) in self._length_btns.items():
+            selected = (length == self.pending_track_length)
+            bg = (30, 70, 30) if selected else (25, 40, 70)
+            border = ACCENT if selected else (50, 80, 140)
+            pygame.draw.rect(self.screen, (0, 0, 0, 80), rect.move(2, 3), border_radius=6)
+            pygame.draw.rect(self.screen, bg, rect, border_radius=6)
+            pygame.draw.rect(self.screen, border, rect, 1, border_radius=6)
+            hovered = rect.collidepoint(mouse)
+            lbl = self._sub_f.render(str(length), True,
+                                     WHITE if hovered or selected else (180, 190, 210))
+            self.screen.blit(lbl, (rect.centerx - lbl.get_width() // 2,
+                                   rect.centery - lbl.get_height() // 2))
+
+        # Volume sliders
+        vol_lbl = self._sub_f.render("Audio", True, (180, 190, 210))
+        self.screen.blit(vol_lbl, (self._panel_x + 30, self._panel_y + 255))
+        self._sl_music.draw(self.screen)
+        self._sl_sfx.draw(self.screen)
+
+        # Apply button
+        self._btn_apply.draw(self.screen, mouse)
+
+        # Status message
+        if self._status and self._status_timer > 0:
+            alpha = min(255, int(self._status_timer * 255 / 2.0))
+            status_surf = self._small_f.render(self._status, True, (200, 220, 255))
+            status_surf.set_alpha(alpha)
+            self.screen.blit(status_surf, (self._panel_x + 30, self._panel_y + self._panel_h - 35))
+
+        # Confirmation dialog
+        if self._show_confirm:
+            self._draw_confirm_dialog(mouse)
+
+        # Chat toggle button
+        self._chat.draw(mouse)
+
+    def _draw_confirm_dialog(self, mouse: tuple) -> None:
+        """Draw confirmation dialog for peer requests."""
+        dialog_w = 400
+        dialog_h = 180
+        dialog_x = (SCREEN_W - dialog_w) // 2
+        dialog_y = (SCREEN_H - dialog_h) // 2
+
+        self._confirm_dialog_rect = pygame.Rect(dialog_x, dialog_y, dialog_w, dialog_h)
+
+        # Background
+        pygame.draw.rect(self.screen, (20, 30, 50),
+                         (dialog_x, dialog_y, dialog_w, dialog_h), border_radius=10)
+        pygame.draw.rect(self.screen, ACCENT,
+                         (dialog_x, dialog_y, dialog_w, dialog_h), 2, border_radius=10)
+
+        # Title
+        if self._confirm_type == "mode":
+            title = f"Change Game Mode to {self.MODE_NAMES.get(self._confirm_value, '?')}?"
+        else:
+            title = f"Change Track Length to {self._confirm_value}?"
+
+        title_lbl = self._sub_f.render(title, True, WHITE)
+        self.screen.blit(title_lbl, (dialog_x + 20, dialog_y + 15))
+
+        # Buttons
+        self._btn_confirm_yes = Button(dialog_x + 120, dialog_y + 120, "Accept", accent=(40, 120, 60))
+        self._btn_confirm_no = Button(dialog_x + 280, dialog_y + 120, "Decline")
+
+        self._btn_confirm_yes.draw(self.screen, mouse)
+        self._btn_confirm_no.draw(self.screen, mouse)
+
+
 class _FirstStartSetup:
     """Multi-slide tutorial shown on first launch."""
 

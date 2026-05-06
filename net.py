@@ -93,6 +93,8 @@ class HostConnection:
         self._client_ready_for_map  = False   # Phase 11.2: 3-way handshake
         self._mode_change_confirm   = False
         self._mode_change_deny      = False
+        self._track_length_change_confirm = False
+        self._track_length_change_deny    = False
         self._connected  = False
         self._running    = False
         self._new_client = False
@@ -191,6 +193,10 @@ class HostConnection:
         """Asks the navigator to accept a mode switch post-race."""
         self.send_state({"type": "mode_change_request", "new_mode": new_mode})
 
+    def send_track_length_change_request(self, new_length: int) -> None:
+        """Asks the navigator to accept a track length change."""
+        self.send_state({"type": "track_length_change_request", "new_length": new_length})
+
     def client_confirmed_mode_change(self) -> bool:
         """True (once) if the navigator accepted the mode change request."""
         with self._lock:
@@ -201,6 +207,18 @@ class HostConnection:
         """True (once) if the navigator rejected the mode change request."""
         with self._lock:
             flag, self._mode_change_deny = self._mode_change_deny, False
+        return flag
+
+    def client_confirmed_track_length_change(self) -> bool:
+        """True (once) if the navigator accepted the track length change request."""
+        with self._lock:
+            flag, self._track_length_change_confirm = self._track_length_change_confirm, False
+        return flag
+
+    def client_denied_track_length_change(self) -> bool:
+        """True (once) if the navigator rejected the track length change request."""
+        with self._lock:
+            flag, self._track_length_change_deny = self._track_length_change_deny, False
         return flag
 
     def client_wants_lobby(self) -> bool:
@@ -243,6 +261,8 @@ class HostConnection:
             self._client_ready_for_map  = False
             self._mode_change_confirm   = False
             self._mode_change_deny      = False
+            self._track_length_change_confirm = False
+            self._track_length_change_deny    = False
             self._new_client            = False
 
     def get_client_lobby(self) -> Optional[dict]:
@@ -319,6 +339,10 @@ class HostConnection:
                         self._mode_change_confirm = True
                     elif msg_type == "mode_change_deny":
                         self._mode_change_deny = True
+                    elif msg_type == "track_length_change_confirm":
+                        self._track_length_change_confirm = True
+                    elif msg_type == "track_length_change_deny":
+                        self._track_length_change_deny = True
                     elif msg_type == "chat":
                         self._chat_inbox.append(msg)
                     else:
@@ -365,6 +389,7 @@ class ClientConnection:
         self._kick_flag              = False
         self._host_back_lobby        = False
         self._mode_change_request    : Optional[int] = None
+        self._track_length_change_request: Optional[int] = None
         self._connected              = False
 
     # ─── Public API ─────────────────────────────────────────────────────────────
@@ -500,6 +525,20 @@ class ClientConnection:
         """Reject the host's mode change request."""
         self.send_input({"type": "mode_change_deny"})
 
+    def get_track_length_change_request(self) -> Optional[int]:
+        """Returns requested new track length (once) if host sent a track length change request."""
+        with self._lock:
+            val, self._track_length_change_request = self._track_length_change_request, None
+        return val
+
+    def send_track_length_change_confirm(self) -> None:
+        """Accept the host's track length change request."""
+        self.send_input({"type": "track_length_change_confirm"})
+
+    def send_track_length_change_deny(self) -> None:
+        """Reject the host's track length change request."""
+        self.send_input({"type": "track_length_change_deny"})
+
     def reset_lobby_flags(self) -> None:
         """
         Resets all transient signal flags (Phase 11.2).
@@ -514,6 +553,7 @@ class ClientConnection:
             self._kick_flag              = False
             self._host_back_lobby        = False
             self._mode_change_request    = None
+            self._track_length_change_request = None
 
     def is_connected(self) -> bool:
         with self._lock:
@@ -555,6 +595,8 @@ class ClientConnection:
                         self._host_back_lobby = True
                     elif msg_type == "mode_change_request":
                         self._mode_change_request = msg.get("new_mode")
+                    elif msg_type == "track_length_change_request":
+                        self._track_length_change_request = msg.get("new_length")
                     elif msg_type == "chat":
                         self._chat_inbox.append(msg)
                     else:

@@ -696,10 +696,27 @@ class ClientGame:
         self.running          = False
 
     def _open_pause_settings(self) -> None:
-        """Shows settings panel while game is paused."""
-        import main as _main_mod
-        settings_scene = _main_mod.SettingsScene(self.screen)
-        settings_scene.run()
+        """Shows in-game settings panel while game is paused."""
+        if _main_mod is None:
+            return
+
+        # Capture current screen as background
+        background = self.screen.copy()
+
+        import settings as _s
+        username = getattr(_s, "USERNAME", "").strip() or "Client"
+        settings_scene = _main_mod.InGameSettingsScene(
+            self.screen,
+            background,
+            current_mode=self._mode,
+            current_track_length=20,  # Client doesn't store track length
+            net=self._net,
+            is_host=False,
+            username=username,
+        )
+        changes = settings_scene.run()
+
+        # Client doesn't apply changes directly - host handles it
         # Game stays paused when returning
 
     def _handle_pause_click(self, pos: tuple) -> None:

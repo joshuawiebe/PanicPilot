@@ -78,6 +78,8 @@ class HostGame(Game):
         self._return_to_settings = False
         self._mode_switch_pending: int | None = None  # requested new mode, awaiting confirm
         self._mode_change_countdown = 0.0
+        self._track_length_switch_pending: int | None = None
+        self._track_length_change_countdown = 0.0
 
         self._status_font = pygame.font.SysFont("Arial", 15, bold=True)
         self._mode_font   = pygame.font.SysFont("Arial", 22, bold=True)
@@ -133,6 +135,38 @@ class HostGame(Game):
             self.running               = False
             self._return_to_settings   = True
 
+    def _open_pause_settings(self) -> None:
+        """Shows in-game settings panel while game is paused."""
+        import settings as _s
+        if _main_mod is None:
+            return
+
+        # Capture current screen as background
+        background = self.screen.copy()
+
+        username = getattr(_s, "USERNAME", "").strip() or "Host"
+        settings_scene = _main_mod.InGameSettingsScene(
+            self.screen,
+            background,
+            current_mode=self.mode,
+            current_track_length=self._host_track_length,
+            net=self._net,
+            is_host=True,
+            username=username,
+        )
+        changes = settings_scene.run()
+
+        # Apply changes
+        if changes:
+            if "mode" in changes:
+                self._mode_switch_pending = changes["mode"]
+                self._mode_change_countdown = 3.0
+            if "track_length" in changes:
+                self._track_length_switch_pending = changes["track_length"]
+                self._track_length_change_countdown = 3.0
+
+        # Game stays paused when returning
+
     # ─── Update ───────────────────────────────────────────────────────────────
 
     def update(self, dt: float, input_override=None, input_car1=None) -> None:
@@ -183,6 +217,30 @@ class HostGame(Game):
                 self.game_over = False
                 self.winner = None
                 self._update_caption()
+
+        # Track length switch: check for navigator confirm/deny
+        if self._track_length_switch_pending is not None:
+            if self._net.client_confirmed_track_length_change():
+                new_length = self._track_length_switch_pending
+                self._track_length_switch_pending = None
+                self._track_length_change_countdown = 3.0
+            elif self._net.client_denied_track_length_change():
+                self._track_length_switch_pending = None
+
+        # Track length change countdown - execute switch when timer expires
+        if self._track_length_change_countdown > 0:
+            self._track_length_change_countdown -= dt
+            if self._track_length_change_countdown <= 0:
+                if self._track_length_switch_pending:
+                    self._host_track_length = self._track_length_switch_pending
+                self._track_length_switch_pending = None
+                self.reset()
+                self._pending_map_send = True
+                self._countdown = 3.0
+                self._go_timer = 0.0
+                self._race_started = False
+                self.game_over = False
+                self.winner = None
 
         # Map handshake: one-time after new client or reset
         if self._net.got_new_client() or self._pending_map_send:

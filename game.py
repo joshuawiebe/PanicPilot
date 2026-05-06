@@ -305,12 +305,36 @@ class Game:
         self.running = False
 
     def _open_pause_settings(self) -> None:
-        """Shows settings panel while game is paused."""
+        """Shows in-game settings panel while game is paused."""
         import settings as _s
         if _main_mod is None:
             return
-        settings_scene = _main_mod.SettingsScene(self.screen)
-        settings_scene.run()
+
+        # Capture current screen as background
+        background = self.screen.copy()
+
+        username = getattr(_s, "USERNAME", "").strip() or "Player"
+        settings_scene = _main_mod.InGameSettingsScene(
+            self.screen,
+            background,
+            current_mode=self.mode,
+            current_track_length=getattr(self, "_host_track_length", 20),
+            net=None,  # Solo mode has no network
+            is_host=True,
+            username=username,
+        )
+        changes = settings_scene.run()
+
+        # Apply changes
+        if changes:
+            if "mode" in changes:
+                self.mode = changes["mode"]
+                self.reset()
+            if "track_length" in changes:
+                if hasattr(self, "_host_track_length"):
+                    self._host_track_length = changes["track_length"]
+                self.reset()
+
         # Game stays paused when returning
 
     def _on_keydown(self, event) -> None:
