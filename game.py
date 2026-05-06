@@ -28,7 +28,6 @@ from entities import (
     ItemBox,
     GreenBoomerang,
     RedBoomerang,
-    ParticleSystem,
     PLAYER_HOST,
     PLAYER_CLIENT,
     BOOMERANG_SPEED,

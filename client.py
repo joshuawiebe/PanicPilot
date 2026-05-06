@@ -25,7 +25,7 @@ from walls       import WallSystem
 from hud         import HUD
 from entities    import (FuelCanister, BoostPad, OilSlick, ItemBox,
                            GreenBoomerang, RedBoomerang,
-                           ParticleSystem, PLAYER_HOST, PLAYER_CLIENT)
+                           PLAYER_HOST, PLAYER_CLIENT)
 from particles   import ParticleSystem
 from props       import PropManager
 from net         import ClientConnection

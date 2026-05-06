@@ -3000,9 +3000,7 @@ def main() -> None:
             break
 
         elif choice == "settings":
-            _fade_to_black(screen, 0.2)
             SettingsScene(screen).run()
-            _fade_from_black(screen, 0.2)
 
         elif choice == "solo":
             result = SoloClassPicker(screen).run()
