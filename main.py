@@ -280,6 +280,34 @@ def _shadow_rect(surface: pygame.Surface, rect: pygame.Rect,
     surface.blit(s, sr.topleft)
 
 
+def _fade_to_black(surface: pygame.Surface, duration: float = 0.25) -> None:
+    """Smooth fade transition to black overlay."""
+    clock = pygame.time.Clock()
+    overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+    elapsed = 0.0
+    while elapsed < duration:
+        dt = min(clock.tick(60) / 1000.0, 0.05)
+        elapsed += dt
+        alpha = int(255 * min(1.0, elapsed / duration))
+        overlay.fill((0, 0, 0, alpha))
+        surface.blit(overlay, (0, 0))
+        pygame.display.flip()
+
+
+def _fade_from_black(surface: pygame.Surface, duration: float = 0.25) -> None:
+    """Smooth fade transition from black overlay."""
+    clock = pygame.time.Clock()
+    overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+    elapsed = 0.0
+    while elapsed < duration:
+        dt = min(clock.tick(60) / 1000.0, 0.05)
+        elapsed += dt
+        alpha = int(255 * (1.0 - min(1.0, elapsed / duration)))
+        overlay.fill((0, 0, 0, alpha))
+        surface.blit(overlay, (0, 0))
+        pygame.display.flip()
+
+
 def _glow_rect(surface: pygame.Surface, rect: pygame.Rect,
                color: tuple, layers: int = 3) -> None:
     for i in range(layers, 0, -1):
@@ -2972,15 +3000,19 @@ def main() -> None:
             break
 
         elif choice == "settings":
+            _fade_to_black(screen, 0.2)
             SettingsScene(screen).run()
+            _fade_from_black(screen, 0.2)
 
         elif choice == "solo":
             result = SoloClassPicker(screen).run()
             if result is not None:
                 car_class, length, speed_scale = result
+                _fade_to_black(screen, 0.3)
                 if _sm: _sm.play_music("race")
                 _run_solo(screen, car_class, length, speed_scale)
                 if _sm: _sm.engine_stop()
+                _fade_from_black(screen, 0.3)
 
         elif choice == "host":
             settings = HostSetupMenu(screen)
@@ -3024,9 +3056,11 @@ def main() -> None:
         elif choice == "client":
             host_ip = ClientSetupMenu(screen).run()
             if host_ip is not None:
+                _fade_to_black(screen, 0.3)
                 if _sm: _sm.play_music("menu")
                 ClientLobby(screen, host_ip).run()
                 if _sm: _sm.engine_stop()
+                _fade_from_black(screen, 0.3)
 
     if _sm:
         _sm.shutdown()
