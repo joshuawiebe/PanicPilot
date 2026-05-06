@@ -133,6 +133,12 @@ class Game:
         self._overlay_surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
         self._overlay_surf.fill((0, 0, 0, 160))
 
+        # Grain surface for Panic mode (cached, regenerated periodically)
+        self._grain_surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        self._grain_timer = 0.0
+        self._grain_interval = 0.08
+        self._regen_grain()
+
         self.camera = Camera()
         self._init_game_objects()
 
@@ -140,6 +146,15 @@ class Game:
         self._shake_amount = 0.0
         self._shake_decay = 8.0
         self._shake_offset = (0, 0)
+
+    def _regen_grain(self) -> None:
+        import random as _r
+        self._grain_surf.fill((0, 0, 0, 0))
+        for _ in range(3000):
+            gx = _r.randint(0, SCREEN_W - 1)
+            gy = _r.randint(0, SCREEN_H - 1)
+            ga = _r.randint(8, 30)
+            self._grain_surf.set_at((gx, gy), (255, 255, 255, ga))
 
     # ─── Initialisierung ─────────────────────────────────────────────────────
 
@@ -362,6 +377,12 @@ class Game:
         # Decay screen shake
         if self._shake_amount > 0:
             self._shake_amount = max(0, self._shake_amount - self._shake_decay * dt)
+
+        # Regenerate grain for Panic mode
+        self._grain_timer += dt
+        if self._grain_timer >= self._grain_interval and self.mode == MODE_PANIC:
+            self._regen_grain()
+            self._grain_timer = 0.0
 
         self.pings = [p for p in self.pings if p[2] > 0]
         if len(self.pings) > MAX_PINGS:
@@ -794,6 +815,8 @@ class Game:
         self._fog_surf.fill((0, 0, 0, FOG_ALPHA))
         pygame.draw.circle(self._fog_surf, (0, 0, 0, 0), (cx, cy), FOG_RADIUS)
         surface.blit(self._fog_surf, (0, 0))
+        if self.mode == MODE_PANIC:
+            surface.blit(self._grain_surf, (0, 0))
 
     def draw_ping_glow_through_fog(self, surface: pygame.Surface) -> None:
         """Draw ping glow effects that pierce through fog before fog is applied."""
