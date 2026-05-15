@@ -122,6 +122,7 @@ class ClientGame:
         self._pending_mode_request: int | None = None
         self._mode_request_timer:   float      = 0.0
         self._mode_switch_accepted: bool       = False
+        self._mode_switch_target:   int | None = None
 
         # Phase 12.2: Latency tracking for ping visualization
         self._frame_times: deque[float] = deque(maxlen=60)
@@ -339,10 +340,12 @@ class ClientGame:
                         self._net.send_mode_change_confirm()
                         if not self._game_over and not self._winner:
                             self._mode_switch_accepted = True
+                            self._mode_switch_target = self._pending_mode_request
                         self._pending_mode_request = None
                     elif event.key == pygame.K_n and self._pending_mode_request is not None:
                         self._net.send_mode_change_deny()
                         self._pending_mode_request = None
+                        self._mode_switch_target = None
                     elif self._paused and event.key == pygame.K_s:
                         self._open_pause_settings()
                     elif self._paused and event.key == pygame.K_l:
@@ -442,10 +445,11 @@ class ClientGame:
                         # Auto-deny on timeout
                         self._net.send_mode_change_deny()
                         self._pending_mode_request = None
+                        self._mode_switch_target = None
 
                 # Handle mid-game mode switch - reset state when host switches
                 if self._mode_switch_accepted:
-                    if packet.get("game_over") and not self._game_over:
+                    if packet is not None and packet.get("game_over") and not self._game_over:
                         # Host triggered reset for mode change
                         self._game_over = True
                         self._winner = "mode_change"
@@ -517,6 +521,7 @@ class ClientGame:
             # Mid-game mode change: rebuild track if map data changed
             if self._mode_switch_accepted:
                 self._mode_switch_accepted = False
+                self._mode_switch_target = None
                 self._game_over = False
                 self._winner = None
                 self._countdown = 3.0
@@ -633,6 +638,7 @@ class ClientGame:
             pulse  = 0.9 + 0.1 * math.sin(now_ms / 150.0)
             alpha  = int(220 * frac * pulse)
             r      = int(max(3, 10 + 8 * frac))
+            alpha = max(0, min(255, alpha))
             tmp    = pygame.Surface((r*2+20, r*2+20), pygame.SRCALPHA)
             mid    = r + 10
             pygame.draw.circle(tmp, (255, 255, 80, alpha), (mid, mid), r, 2)
@@ -674,7 +680,8 @@ class ClientGame:
             overlay.fill((0, 0, 0, 160))
             self.screen.blit(overlay, (0, 0))
             modes = {1: "Split Control", 2: "Panic Pilot", 3: "PvP Racing"}
-            mode_name = modes.get(self._mode, "?")
+            target_mode = self._mode_switch_target if self._mode_switch_target is not None else self._mode
+            mode_name = modes.get(target_mode, "?")
             cd_font = pygame.font.SysFont("Arial", 48, bold=True)
             cd_txt = cd_font.render(f"Switching to {mode_name}…", True, CYAN)
             self.screen.blit(cd_txt, ((SCREEN_W - cd_txt.get_width()) // 2, SCREEN_H // 2 - 30))
