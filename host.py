@@ -18,6 +18,10 @@ from game        import Game, PING_DURATION, MAX_PINGS, SPEED_SCALE_NORMAL
 from input_state import InputState
 from track       import Track
 from net         import HostConnection
+try:
+    import main as _main_mod
+except Exception:
+    _main_mod = None
 
 logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
 
@@ -156,14 +160,23 @@ class HostGame(Game):
         )
         changes = settings_scene.run()
 
-        # Apply changes
+        # Apply changes immediately on host
         if changes:
-            if "mode" in changes:
-                self._mode_switch_pending = changes["mode"]
-                self._mode_change_countdown = 3.0
-            if "track_length" in changes:
-                self._track_length_switch_pending = changes["track_length"]
-                self._track_length_change_countdown = 3.0
+            applied = False
+            if "mode" in changes and int(changes["mode"]) != self.mode:
+                self.mode = int(changes["mode"])
+                self._host_mode = self.mode
+                applied = True
+            if "track_length" in changes and int(changes["track_length"]) != self._host_track_length:
+                self._host_track_length = int(changes["track_length"])
+                applied = True
+            if applied:
+                self.reset()
+                self._pending_map_send = True
+                if self._net.is_connected():
+                    self._net.send_map({**self.track.to_dict(), "game_mode": self.mode})
+                    self._pending_map_send = False
+                self._update_caption()
 
         # Game stays paused when returning
 
@@ -196,19 +209,20 @@ class HostGame(Game):
 
         # Mode switch: check for navigator confirm/deny
         if self._mode_switch_pending is not None:
-            if self._net.client_confirmed_mode_change():
-                new_mode = self._mode_switch_pending
-                self._mode_switch_pending = None
+            if self._net.client_confirmed_mode_change() and self._mode_change_countdown <= 0:
                 self._mode_change_countdown = 3.0
             elif self._net.client_denied_mode_change():
                 self._mode_switch_pending = None
+                self._mode_change_countdown = 0.0
 
         # Mode change countdown - execute switch when timer expires
         if self._mode_change_countdown > 0:
             self._mode_change_countdown -= dt
             if self._mode_change_countdown <= 0:
-                self.mode = self._mode_switch_pending if self._mode_switch_pending else self.mode
-                self._mode_switch_pending = None
+                if self._mode_switch_pending is not None:
+                    self.mode = self._mode_switch_pending
+                    self._host_mode = self.mode
+                    self._mode_switch_pending = None
                 self.reset()
                 self._pending_map_send = True
                 self._countdown = 3.0
@@ -403,7 +417,8 @@ class HostGame(Game):
         if self._mode_change_countdown > 0:
             modes = {1: "Split Control", 2: "Panic Pilot", 3: "PvP Racing"}
             secs = int(self._mode_change_countdown) + 1
-            cd_txt = f"Switching to {modes.get(self.mode, '?')} in {secs}…"
+            target_mode = self._mode_switch_pending if self._mode_switch_pending is not None else self.mode
+            cd_txt = f"Switching to {modes.get(target_mode, '?')} in {secs}…"
             cdlbl = pygame.font.SysFont("Arial", 28, bold=True).render(cd_txt, True, CYAN)
             self.screen.blit(cdlbl, ((SCREEN_W - cdlbl.get_width()) // 2, SCREEN_H // 2 - 100))
 
